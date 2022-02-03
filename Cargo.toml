@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "engine",
+    "hoophorse",
+    "game2"
+]
+
+[dependencies]
+engine = { path = "../engine" }
