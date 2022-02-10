@@ -193,7 +193,7 @@ fn hline_beyond_window(fb: &mut [Color], x0: usize, x1: usize, y: usize, c: Colo
     fb[y * WIDTH + x0..(y * WIDTH + x1)].fill(c);
 }
 
-fn main() {
+pub fn main() {
     // Steps to take to take out code for the engine.
     // update fn
     // current game state, input state, ref to the engine
