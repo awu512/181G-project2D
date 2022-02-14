@@ -19,6 +19,7 @@ mod tests {
 // according to those terms.
 
 use std::sync::Arc;
+use std::time::Instant;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
@@ -45,7 +46,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
 // We'll make our Color type an RGBA8888 pixel.
-type Color = (u8, u8, u8, u8);
+pub type Color = (u8, u8, u8, u8);
 
 const WIDTH: usize = 320;
 const HEIGHT: usize = 240;
@@ -80,120 +81,119 @@ impl Vec2i {
     // Maybe add functions for e.g. the midpoint of two vecs, or...
 }
 
-// Maybe add implementations of traits like std::ops::Add, AddAssign, Mul, MulAssign, Sub, SubAssign, ...
-
-// Here's what clear looks like, though we won't use it
-#[allow(dead_code)]
-fn clear(fb: &mut [Color], c: Color) {
-    fb.fill(c);
+#[derive(Clone, Copy, Hash, Debug)]
+pub struct Fb2d {
+    pub color: Color,
+    pub array: [Color; HEIGHT * WIDTH],
 }
 
-#[allow(dead_code)]
-fn hline(fb: &mut [Color], x0: usize, x1: usize, y: usize, c: Color) {
-    assert!(y < HEIGHT);
-    assert!(x0 <= x1);
-    assert!(x1 < WIDTH);
-    fb[y * WIDTH + x0..(y * WIDTH + x1)].fill(c);
-}
-
-#[allow(dead_code)]
-fn vline(fb: &mut [Color], x: usize, y0: usize, y1: usize, c: Color) {
-    assert!(y0 <= y1);
-    assert!(y1 <= HEIGHT);
-    assert!(x < WIDTH);
-    let rect_height = y1 - y0;
-    let mut x_level = x;
-    for _ in 0..rect_height + 1 {
-        fb[y0 * WIDTH + x_level..(y0 * WIDTH + x_level + 1)].fill(c);
-        x_level = x_level + WIDTH;
+impl Fb2d {
+    pub fn new(color: Color) -> Fb2d {
+        let array = [color; HEIGHT * WIDTH];
+        Fb2d { color, array }
     }
-}
 
-#[allow(dead_code)]
-fn draw_filled_rect(fb2d: &mut [Color], starting_height: usize, w: usize, color: (u8, u8, u8, u8)) {
-    if starting_height + 15 < HEIGHT {
-        for y in starting_height..starting_height + 15 {
-            hline(fb2d, WIDTH / 2 - w / 2, WIDTH / 2 + w / 2, y, color);
+    // Here's what clear looks like, though we won't use it
+    #[allow(dead_code)]
+    pub fn clear(&mut self, c: Color) {
+        self.color = c;
+        self.array.fill(c);
+    }
+
+    #[allow(dead_code)]
+    pub fn hline(&mut self, x0: usize, x1: usize, y: usize, c: Color) {
+        assert!(y < HEIGHT);
+        assert!(x0 <= x1);
+        assert!(x1 < WIDTH);
+        self.array[y * WIDTH + x0..(y * WIDTH + x1)].fill(c);
+    }
+
+    #[allow(dead_code)]
+    pub fn vline(&mut self, x: usize, y0: usize, y1: usize, c: Color) {
+        assert!(y0 <= y1);
+        assert!(y1 <= HEIGHT);
+        assert!(x < WIDTH);
+        let rect_height = y1 - y0;
+        let mut x_level = x;
+        for _ in 0..rect_height + 1 {
+            self.array[y0 * WIDTH + x_level..(y0 * WIDTH + x_level + 1)].fill(c);
+            x_level = x_level + WIDTH;
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn draw_filled_rect(&mut self, starting_height: usize, w: usize, color: Color) {
+        if starting_height + 15 < HEIGHT {
+            for y in starting_height..starting_height + 15 {
+                self.hline(WIDTH / 2 - w / 2, WIDTH / 2 + w / 2, y, color);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn draw_outlined_rect(&mut self, starting_height: usize, w: usize, color: Color) {
+        if starting_height + 15 < HEIGHT {
+            // Top of rect
+            self.hline(WIDTH / 2 - w / 2, WIDTH / 2 + w / 2, starting_height, color);
+            // Left side of rect
+            self.vline(
+                WIDTH / 2 - w / 2,
+                starting_height,
+                starting_height + 15,
+                color,
+            );
+            // // Right side of rect
+            self.vline(
+                WIDTH / 2 + w / 2,
+                starting_height,
+                starting_height + 15,
+                color,
+            );
+            // Bottom of rect
+            self.hline(
+                WIDTH / 2 - w / 2,
+                WIDTH / 2 + w / 2,
+                starting_height + 15,
+                color,
+            );
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn diagonal_line(
+        &mut self,
+        (x0, y0): (usize, usize),
+        (x1, y1): (usize, usize),
+        col: Color,
+    ) {
+        let mut x = x0 as i64;
+        let mut y = y0 as i64;
+        let x0 = x0 as i64;
+        let y0 = y0 as i64;
+        let x1 = x1 as i64;
+        let y1 = y1 as i64;
+        let dx = (x1 - x0).abs();
+        let sx: i64 = if x0 < x1 { 1 } else { -1 };
+        let dy = -(y1 - y0).abs();
+        let sy: i64 = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx + dy;
+        while x != x1 || y != y1 {
+            self.array[(y as usize * WIDTH + x as usize)..(y as usize * WIDTH + (x as usize + 1))]
+                .fill(col);
+            let e2 = 2 * err;
+            if dy <= e2 {
+                err += dy;
+                x += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y += sy;
+            }
         }
     }
 }
 
-#[allow(dead_code)]
-fn draw_outlined_rect(
-    fb2d: &mut [Color],
-    starting_height: usize,
-    w: usize,
-    color: (u8, u8, u8, u8),
-) {
-    if starting_height + 15 < HEIGHT {
-        // Top of rect
-        hline(
-            fb2d,
-            WIDTH / 2 - w / 2,
-            WIDTH / 2 + w / 2,
-            starting_height,
-            color,
-        );
-        // Left side of rect
-        vline(
-            fb2d,
-            WIDTH / 2 - w / 2,
-            starting_height,
-            starting_height + 15,
-            color,
-        );
-        // // Right side of rect
-        vline(
-            fb2d,
-            WIDTH / 2 + w / 2,
-            starting_height,
-            starting_height + 15,
-            color,
-        );
-        // Bottom of rect
-        hline(
-            fb2d,
-            WIDTH / 2 - w / 2,
-            WIDTH / 2 + w / 2,
-            starting_height + 15,
-            color,
-        );
-    }
-}
-
-#[allow(dead_code)]
-fn diagonal_line(fb: &mut [Color], (x0, y0): (usize, usize), (x1, y1): (usize, usize), col: Color) {
-    let mut x = x0 as i64;
-    let mut y = y0 as i64;
-    let x0 = x0 as i64;
-    let y0 = y0 as i64;
-    let x1 = x1 as i64;
-    let y1 = y1 as i64;
-    let dx = (x1 - x0).abs();
-    let sx: i64 = if x0 < x1 { 1 } else { -1 };
-    let dy = -(y1 - y0).abs();
-    let sy: i64 = if y0 < y1 { 1 } else { -1 };
-    let mut err = dx + dy;
-    while x != x1 || y != y1 {
-        fb[(y as usize * WIDTH + x as usize)..(y as usize * WIDTH + (x as usize + 1))].fill(col);
-        let e2 = 2 * err;
-        if dy <= e2 {
-            err += dy;
-            x += sx;
-        }
-        if e2 <= dx {
-            err += dx;
-            y += sy;
-        }
-    }
-}
-
-#[allow(dead_code)]
-fn hline_beyond_window(fb: &mut [Color], x0: usize, x1: usize, y: usize, c: Color) {
-    fb[y * WIDTH + x0..(y * WIDTH + x1)].fill(c);
-}
-
-pub fn main() {
+pub fn main(mut fb2d: Fb2d) {
     // Steps to take to take out code for the engine.
     // update fn
     // current game state, input state, ref to the engine
@@ -234,6 +234,22 @@ pub fn main() {
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();
+
+    // function that right now just arbitrarily picks a
+    // present mode, but can be rewritten so that it picks
+    // the optimal present mode (hence the name) - fatuma :)
+    fn best_present_mode(
+        caps: vulkano::swapchain::Capabilities,
+    ) -> vulkano::swapchain::PresentMode {
+        [
+            vulkano::swapchain::PresentMode::Mailbox,
+            vulkano::swapchain::PresentMode::Immediate,
+        ]
+        .into_iter()
+        .find(|mode| caps.present_modes.supports(*mode))
+        .unwrap_or(vulkano::swapchain::PresentMode::Fifo)
+    }
+
     let queue = queues.next().unwrap();
     let (mut swapchain, images) = {
         let caps = surface.capabilities(physical_device).unwrap();
@@ -247,6 +263,7 @@ pub fn main() {
             .usage(ImageUsage::color_attachment())
             .sharing_mode(&queue)
             .composite_alpha(composite_alpha)
+            .present_mode(best_present_mode(caps))
             .build()
             .unwrap()
     };
@@ -318,8 +335,7 @@ pub fn main() {
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
-    // Here's our (2D drawing) framebuffer.
-    let mut fb2d = [(128, 64, 64, 255); WIDTH * HEIGHT];
+    // Our (2D drawing) framebuffer is passed in as an argument.
     // We'll work on it locally, and copy it to a GPU buffer every frame.
     // Then on the GPU, we'll copy it into an Image.
     let fb2d_buffer = CpuAccessibleBuffer::from_iter(
@@ -504,11 +520,11 @@ pub fn main() {
 
                 // It's debatable whether the following code should live here or in the drawing section.
                 // First clear the framebuffer...
-                clear(&mut fb2d, (128, 64, 64, 255));
+                fb2d.clear((128, 64, 64, 255));
                 // Then draw our shapes:
-                draw_filled_rect(&mut fb2d, y, w, colors[color]);
-                draw_outlined_rect(&mut fb2d, y + 20, w, colors[color]);
-                diagonal_line(&mut fb2d, (0, 0), (w, y + 40), colors[color]);
+                fb2d.draw_filled_rect(y, w, colors[color]);
+                fb2d.draw_outlined_rect(y + 20, w, colors[color]);
+                fb2d.diagonal_line((0, 0), (w, y + 40), colors[color]);
                 {
                     // We need to synchronize here to send new data to the GPU.
                     // We can't send the new framebuffer until the previous frame is done being drawn.
@@ -518,11 +534,13 @@ pub fn main() {
                     }
                 }
                 // Now we can copy into our buffer.
+                let buffer_copy_start = Instant::now();
                 {
                     let writable_fb = &mut *fb2d_buffer.write().unwrap();
-                    writable_fb.copy_from_slice(&fb2d);
+                    writable_fb.copy_from_slice(&fb2d.array);
                 }
-
+                dbg!(buffer_copy_start.elapsed());
+                let swapchain_start = Instant::now();
                 if recreate_swapchain {
                     let dimensions: [u32; 2] = surface.window().inner_size().into();
                     let (new_swapchain, new_images) =
@@ -552,6 +570,7 @@ pub fn main() {
                 if suboptimal {
                     recreate_swapchain = true;
                 }
+                dbg!(swapchain_start.elapsed());
 
                 let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
@@ -587,6 +606,7 @@ pub fn main() {
 
                 let command_buffer = builder.build().unwrap();
 
+                let future_start = Instant::now();
                 let future = acquire_future
                     .then_execute(queue.clone(), command_buffer)
                     .unwrap()
@@ -606,6 +626,7 @@ pub fn main() {
                         previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
+                dbg!(future_start.elapsed());
             }
             _ => (),
         }
