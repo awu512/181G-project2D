@@ -57,9 +57,9 @@ fn premultiply(img: &mut [Color], alpha: AlphaChannel) {
         AlphaChannel::First => {
             for px in img.iter_mut() {
                 let a = px.0 as f32 / 255.0;
-                px.1 = (*px.1 as f32 * a).round() as u8;
-                px.2 = (*px.2 as f32 * a).round() as u8;
-                px.3 = (*px.3 as f32 * a).round() as u8;
+                px.1 = (px.1 as f32 * a).round() as u8;
+                px.2 = (px.2 as f32 * a).round() as u8;
+                px.3 = (px.3 as f32 * a).round() as u8;
                 // swap around to rgba8888
                 let a = px.0;
                 px.0 = px.1;
@@ -70,7 +70,7 @@ fn premultiply(img: &mut [Color], alpha: AlphaChannel) {
         }
         AlphaChannel::Last => {
             for px in img.iter_mut() {
-                let a = px.3.unwrap() as f32 / 255.0;
+                let a = px.3 as f32 / 255.0;
                 px.0 = (px.0 as f32 * a) as u8;
                 px.1 = (px.1 as f32 * a) as u8;
                 px.2 = (px.2 as f32 * a) as u8;
@@ -92,7 +92,28 @@ impl Rect {
     pub fn new(x: i32, y: i32, w: u32, h: u32) -> Rect {
         Rect { x, y, w, h }
     }
-    // Maybe add functions to test if a point is inside the rect...
+    // This function checks to see if the Rect is inside a src_image.
+    pub fn rect_inside(
+        self,
+        src_img_x: i32,
+        src_img_y: i32,
+        src_img_w: u32,
+        src_img_h: u32,
+    ) -> bool {
+        if self.x > src_img_x + src_img_w as i32 {
+            return false;
+        }
+        if self.y > src_img_y + src_img_h as i32 {
+            return false;
+        }
+        if self.x < src_img_x {
+            return false;
+        }
+        if self.y < src_img_y {
+            return false;
+        }
+        true
+    }
     // Or whether two rects overlap...
 }
 
@@ -222,6 +243,7 @@ impl Fb2d {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Hash, Debug)]
 pub struct Image {
     pub buffer: Box<[Color]>, // or Vec<Color>, or...
     pub w: usize,
@@ -231,7 +253,15 @@ pub struct Image {
 impl Image {
     // maybe a function to load it from a file using the png crate!
     // you'd want to premultiply it and convert it from `[u8]` into `[Color]`!
-    fn get_png() {
+    pub fn get_png(
+        queue: std::sync::Arc<vulkano::device::Queue>,
+    ) -> (
+        std::sync::Arc<vulkano::image::view::ImageView<vulkano::image::ImmutableImage>>,
+        vulkano::command_buffer::CommandBufferExecFuture<
+            vulkano::sync::NowFuture,
+            vulkano::command_buffer::PrimaryAutoCommandBuffer,
+        >,
+    ) {
         let png_bytes = include_bytes!("../spritesheet.png").to_vec();
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
@@ -258,18 +288,19 @@ impl Image {
     }
 
     // maybe put bitblt into here?
-    pub fn bitblt(src: &Image, from: Rect, dst: &mut Image, to: Vec2) {
-        assert!(rect_inside(from, (0, 0, src_size.0, src_size.1)));
-        let (to_x, to_y) = to;
-        if (to_x + from.x as i32) < 0
-            || (dst_size.0 as i32) <= to_x
-            || (to_y + from.3 as i32) < 0
-            || (dst_size.1 as i32) <= to_y
+    pub fn bitblt(src: &Image, from: Rect, dst: &mut Image, to: Vec2i) {
+        assert!(from.rect_inside(0, 0, src.w as u32, src.h as u32));
+        let to_x = to.x;
+        let to_y = to.y;
+        if (to_x + from.w as i32) < 0
+            || (dst.w as i32) <= to_x
+            || (to_y + from.h as i32) < 0
+            || (dst.h as i32) <= to_y
         {
             return;
         }
-        let src_pitch = src_size.0;
-        let dst_pitch = dst_size.0;
+        let src_pitch = src.w;
+        let dst_pitch = dst.w;
         // All this rigmarole is just to avoid bounds checks on each pixel of the blit.
         // We want to calculate which row/col of the src image to start at and which to end at.
         // This way there's no need to even check for out of bounds draws---
@@ -277,30 +308,30 @@ impl Image {
         // and skip columns off the left or right sides.
         let y_skip = to_y.max(0) - to_y;
         let x_skip = to_x.max(0) - to_x;
-        let y_count = (to_y + from.3 as i32).min(dst_size.1 as i32) - to_y;
-        let x_count = (to_x + from.2 as i32).min(dst_size.0 as i32) - to_x;
+        let y_count = (to_y + from.h as i32).min(dst.h as i32) - to_y;
+        let x_count = (to_x + from.w as i32).min(dst.w as i32) - to_x;
         // The code above is gnarly so these are just for safety:
         debug_assert!(0 <= x_skip);
         debug_assert!(0 <= y_skip);
         debug_assert!(0 <= x_count);
         debug_assert!(0 <= y_count);
-        debug_assert!(x_count <= from.2 as i32);
-        debug_assert!(y_count <= from.3 as i32);
+        debug_assert!(x_count <= from.w as i32);
+        debug_assert!(y_count <= from.h as i32);
         debug_assert!(0 <= to_x + x_skip);
         debug_assert!(0 <= to_y + y_skip);
-        debug_assert!(0 <= from.0 as i32 + x_skip);
-        debug_assert!(0 <= from.1 as i32 + y_skip);
-        debug_assert!(to_x + x_count <= dst_size.0 as i32);
-        debug_assert!(to_y + y_count <= dst_size.1 as i32);
+        debug_assert!(0 <= from.x as i32 + x_skip);
+        debug_assert!(0 <= from.y as i32 + y_skip);
+        debug_assert!(to_x + x_count <= dst.w as i32);
+        debug_assert!(to_y + y_count <= dst.h as i32);
         // OK, let's do some copying now
-        for (row_a, row_b) in src
+        for (row_a, row_b) in src.buffer
             // From the first pixel of the top row to the first pixel of the row past the bottom...
-            [(src_pitch * (from.1 as i32 + y_skip) as usize)..(src_pitch * (from.1 as i32 + y_count) as usize)]
+            [(src_pitch * (from.y as i32 + y_skip) as usize)..(src_pitch * (from.y as i32 + y_count) as usize)]
             // For each whole row...
             .chunks_exact(src_pitch)
             // Tie it up with the corresponding row from dst
             .zip(
-                dst[(dst_pitch * (to_y + y_skip) as usize)
+                dst.buffer[(dst_pitch * (to_y + y_skip) as usize)
                     ..(dst_pitch * (to_y + y_count) as usize)]
                     .chunks_exact_mut(dst_pitch),
             )
@@ -309,7 +340,7 @@ impl Image {
             let to_cols = row_b
                 [((to_x + x_skip) as usize)..((to_x + x_count) as usize)].iter_mut();
             let from_cols = row_a
-                [((from.0 as i32 + x_skip) as usize)..((from.0 as i32 + x_count) as usize)].iter();
+                [((from.x as i32 + x_skip) as usize)..((from.x as i32 + x_count) as usize)].iter();
             // Composite over, assume premultiplied rgba8888 in src!
             for (to, from) in to_cols.zip(from_cols) {
                 let ta = to.3 as f32 / 255.0;
@@ -341,22 +372,27 @@ impl Rect2 {
         self.color = new;
     }
 
+    #[allow(dead_code)]
     fn left(self) -> usize {
         self.x
     }
 
+    #[allow(dead_code)]
     fn right(self) -> usize {
         self.x + self.width
     }
 
+    #[allow(dead_code)]
     fn top(self) -> usize {
         self.y
     }
 
+    #[allow(dead_code)]
     fn bottom(self) -> usize {
         self.y + self.height
     }
 
+    #[allow(dead_code)]
     fn change_x_by(&mut self, change: f32) {
         let mut x = self.x as f32;
         x = x + change;
@@ -370,6 +406,7 @@ impl Rect2 {
         }
     }
 
+    #[allow(dead_code)]
     fn change_y_by(&mut self, change: f32) {
         let mut y = self.y as f32;
         y = y + change;
@@ -632,7 +669,7 @@ pub fn main(mut fb2d: Fb2d) {
         (0, 0, 0, 255),
     ];
     let mut color = 0;
-    let mut w = 0;
+    let mut rect_w = 0;
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -784,6 +821,7 @@ pub fn main(mut fb2d: Fb2d) {
                             ax = 0.0
                         }
                     }
+                    rect_w -= 1;
                 } else if now_keys[VirtualKeyCode::Right as usize] {
                     if dash {
                         dash = false;
@@ -798,6 +836,7 @@ pub fn main(mut fb2d: Fb2d) {
                             ax = 0.0
                         }
                     }
+                    rect_w += 1;
                 } else {
                     if vx > 0.09 {
                         ax = -0.1
@@ -811,9 +850,9 @@ pub fn main(mut fb2d: Fb2d) {
                 // First clear the framebuffer...
                 fb2d.clear((128, 64, 64, 255));
                 // Then draw our shapes:
-                fb2d.draw_filled_rect(y, w, colors[color]);
-                fb2d.draw_outlined_rect(y + 20, w, colors[color]);
-                fb2d.diagonal_line((0, 0), (w, y + 40), colors[color]);
+                fb2d.draw_filled_rect(y, rect_w, colors[color]);
+                fb2d.draw_outlined_rect(y + 20, rect_w, colors[color]);
+                fb2d.diagonal_line((0, 0), (rect_w, y + 40), colors[color]);
                 {
                     // We need to synchronize here to send new data to the GPU.
                     // We can't send the new framebuffer until the previous frame is done being drawn.
