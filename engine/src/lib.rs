@@ -1,12 +1,3 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
-
 // Based on the Vulkano triangle example.
 
 // Triangle example Copyright (c) 2016 The vulkano developers
@@ -18,6 +9,8 @@ mod tests {
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use png;
+use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
@@ -26,7 +19,9 @@ use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
+use vulkano::image::immutable::ImmutableImage;
 use vulkano::image::ImageCreateFlags;
+use vulkano::image::MipmapsCount;
 use vulkano::image::{
     view::ImageView, ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
 };
@@ -50,6 +45,40 @@ pub type Color = (u8, u8, u8, u8);
 
 const WIDTH: usize = 320;
 const HEIGHT: usize = 240;
+
+type Animation = (Vec<(usize, usize)>, Vec<f32>, bool);
+
+enum AlphaChannel {
+    First,
+    Last,
+}
+fn premultiply(img: &mut [Color], alpha: AlphaChannel) {
+    match alpha {
+        AlphaChannel::First => {
+            for px in img.iter_mut() {
+                let a = px.0 as f32 / 255.0;
+                px.1 = (*px.1 as f32 * a).round() as u8;
+                px.2 = (*px.2 as f32 * a).round() as u8;
+                px.3 = (*px.3 as f32 * a).round() as u8;
+                // swap around to rgba8888
+                let a = px.0;
+                px.0 = px.1;
+                px.1 = px.2;
+                px.2 = px.3;
+                px.3 = a;
+            }
+        }
+        AlphaChannel::Last => {
+            for px in img.iter_mut() {
+                let a = px.3.unwrap() as f32 / 255.0;
+                px.0 = (px.0 as f32 * a) as u8;
+                px.1 = (px.1 as f32 * a) as u8;
+                px.2 = (px.2 as f32 * a) as u8;
+                // already rgba8888
+            }
+        }
+    }
+}
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash, Debug)]
 pub struct Rect {
@@ -189,6 +218,168 @@ impl Fb2d {
                 err += dx;
                 y += sy;
             }
+        }
+    }
+}
+
+pub struct Image {
+    pub buffer: Box<[Color]>, // or Vec<Color>, or...
+    pub w: usize,
+    pub h: usize,
+}
+
+impl Image {
+    // maybe a function to load it from a file using the png crate!
+    // you'd want to premultiply it and convert it from `[u8]` into `[Color]`!
+    fn get_png() {
+        let png_bytes = include_bytes!("../spritesheet.png").to_vec();
+        let cursor = Cursor::new(png_bytes);
+        let decoder = png::Decoder::new(cursor);
+        let mut reader = decoder.read_info().unwrap();
+        let info = reader.info();
+        let dimensions = ImageDimensions::Dim2d {
+            width: info.width,
+            height: info.height,
+            array_layers: 1,
+        };
+        let mut image_data = Vec::new();
+        image_data.resize((info.width * info.height * 4) as usize, 0);
+        reader.next_frame(&mut image_data).unwrap();
+
+        let (image, future) = ImmutableImage::from_iter(
+            image_data.iter().cloned(),
+            dimensions,
+            MipmapsCount::One,
+            Format::R8G8B8A8_SRGB,
+            queue.clone(),
+        )
+        .unwrap();
+        (ImageView::new(image).unwrap(), future)
+    }
+
+    // maybe put bitblt into here?
+    pub fn bitblt(src: &Image, from: Rect, dst: &mut Image, to: Vec2) {
+        assert!(rect_inside(from, (0, 0, src_size.0, src_size.1)));
+        let (to_x, to_y) = to;
+        if (to_x + from.x as i32) < 0
+            || (dst_size.0 as i32) <= to_x
+            || (to_y + from.3 as i32) < 0
+            || (dst_size.1 as i32) <= to_y
+        {
+            return;
+        }
+        let src_pitch = src_size.0;
+        let dst_pitch = dst_size.0;
+        // All this rigmarole is just to avoid bounds checks on each pixel of the blit.
+        // We want to calculate which row/col of the src image to start at and which to end at.
+        // This way there's no need to even check for out of bounds draws---
+        // we'll skip rows that are off the top or off the bottom of the image
+        // and skip columns off the left or right sides.
+        let y_skip = to_y.max(0) - to_y;
+        let x_skip = to_x.max(0) - to_x;
+        let y_count = (to_y + from.3 as i32).min(dst_size.1 as i32) - to_y;
+        let x_count = (to_x + from.2 as i32).min(dst_size.0 as i32) - to_x;
+        // The code above is gnarly so these are just for safety:
+        debug_assert!(0 <= x_skip);
+        debug_assert!(0 <= y_skip);
+        debug_assert!(0 <= x_count);
+        debug_assert!(0 <= y_count);
+        debug_assert!(x_count <= from.2 as i32);
+        debug_assert!(y_count <= from.3 as i32);
+        debug_assert!(0 <= to_x + x_skip);
+        debug_assert!(0 <= to_y + y_skip);
+        debug_assert!(0 <= from.0 as i32 + x_skip);
+        debug_assert!(0 <= from.1 as i32 + y_skip);
+        debug_assert!(to_x + x_count <= dst_size.0 as i32);
+        debug_assert!(to_y + y_count <= dst_size.1 as i32);
+        // OK, let's do some copying now
+        for (row_a, row_b) in src
+            // From the first pixel of the top row to the first pixel of the row past the bottom...
+            [(src_pitch * (from.1 as i32 + y_skip) as usize)..(src_pitch * (from.1 as i32 + y_count) as usize)]
+            // For each whole row...
+            .chunks_exact(src_pitch)
+            // Tie it up with the corresponding row from dst
+            .zip(
+                dst[(dst_pitch * (to_y + y_skip) as usize)
+                    ..(dst_pitch * (to_y + y_count) as usize)]
+                    .chunks_exact_mut(dst_pitch),
+            )
+            {
+            // Get column iterators, save on indexing overhead
+            let to_cols = row_b
+                [((to_x + x_skip) as usize)..((to_x + x_count) as usize)].iter_mut();
+            let from_cols = row_a
+                [((from.0 as i32 + x_skip) as usize)..((from.0 as i32 + x_count) as usize)].iter();
+            // Composite over, assume premultiplied rgba8888 in src!
+            for (to, from) in to_cols.zip(from_cols) {
+                let ta = to.3 as f32 / 255.0;
+                let fa = from.3 as f32 / 255.0;
+                to.0 = from.0.saturating_add((to.0 as f32 * (1.0 - fa)).round() as u8);
+                to.1 = from.1.saturating_add((to.1 as f32 * (1.0 - fa)).round() as u8);
+                to.2 = from.2.saturating_add((to.2 as f32 * (1.0 - fa)).round() as u8);
+                to.3 = ((fa + ta * (1.0 - fa)) * 255.0).round() as u8;
+            }
+        }
+    }
+
+    // ... what else?
+
+    // ... Could our 2d framebuffer itself be an `Image`?
+}
+
+#[derive(Copy, Clone)]
+struct Rect2 {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    color: Color,
+}
+
+impl Rect2 {
+    fn change_color_to(&mut self, new: Color) {
+        self.color = new;
+    }
+
+    fn left(self) -> usize {
+        self.x
+    }
+
+    fn right(self) -> usize {
+        self.x + self.width
+    }
+
+    fn top(self) -> usize {
+        self.y
+    }
+
+    fn bottom(self) -> usize {
+        self.y + self.height
+    }
+
+    fn change_x_by(&mut self, change: f32) {
+        let mut x = self.x as f32;
+        x = x + change;
+
+        if x < 0.0 {
+            self.x = 0;
+        } else if x as usize + self.width > WIDTH {
+            self.x = WIDTH - self.width;
+        } else {
+            self.x = x as usize;
+        }
+    }
+
+    fn change_y_by(&mut self, change: f32) {
+        let mut y = self.y as f32;
+        y = y + change;
+
+        if y < 0.0 {
+            self.y = 0;
+        } else if y as usize + self.height > HEIGHT {
+            self.y = HEIGHT - self.height;
+        } else {
+            self.y = y as usize;
         }
     }
 }
@@ -430,10 +621,6 @@ pub fn main(mut fb2d: Fb2d) {
         depth_range: 0.0..1.0,
     };
 
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
-    let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
-
     let y = 50;
 
     let colors = [
@@ -444,10 +631,38 @@ pub fn main(mut fb2d: Fb2d) {
         (0, 255, 0, 255),
         (0, 0, 0, 255),
     ];
-    let mut now_keys = [false; 255];
-    let mut prev_keys = now_keys.clone();
     let mut color = 0;
     let mut w = 0;
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
+    let mut recreate_swapchain = false;
+    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+    let mut now_keys = [false; 255];
+    let mut prev_keys = now_keys.clone();
+
+    let mut now_lmouse = false;
+    let mut prev_lmouse = false;
+    let white = (255, 255, 255, 255);
+
+    let w = 5_usize;
+    let h = 10_usize;
+
+    let mut player = Rect2 {
+        x: WIDTH / 2 - w / 2,
+        y: HEIGHT - h,
+        width: w,
+        height: h,
+        color: white,
+    };
+
+    let mut dash = false;
+    let mut dash_count = 0_u8;
+
+    let mut vx = 0.0;
+    let mut vy = 0.0;
+    let mut ax = 0.0;
+    let mut ay = 0.2;
+
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -462,12 +677,11 @@ pub fn main(mut fb2d: Fb2d) {
             } => {
                 recreate_swapchain = true;
             }
-            // NewEvents: Let's start processing events.
             Event::NewEvents(_) => {
                 // Leave now_keys alone, but copy over all changed keys
                 prev_keys.copy_from_slice(&now_keys);
+                prev_lmouse = now_lmouse;
             }
-            // WindowEvent->KeyboardInput: Keyboard input!
             Event::WindowEvent {
                 // Note this deeply nested pattern match
                 event:
@@ -494,30 +708,105 @@ pub fn main(mut fb2d: Fb2d) {
                     }
                 }
             }
-            // MainEventsCleared: Buttons and stuff have all been handled. Update stuff!
+            Event::WindowEvent {
+                event:
+                    WindowEvent::MouseInput {
+                        button: btn, state, ..
+                    },
+                ..
+            } => {
+                match btn {
+                    winit::event::MouseButton::Left => {
+                        match state {
+                            winit::event::ElementState::Pressed => {
+                                // VirtualKeycode is an enum with a defined representation
+                                now_lmouse = true;
+                            }
+                            winit::event::ElementState::Released => {
+                                now_lmouse = false;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
             Event::MainEventsCleared => {
-                // We can actually handle events now that we know what they all are.
+                {
+                    // We need to synchronize here to send new data to the GPU.
+                    // We can't send the new framebuffer until the previous frame is done being drawn.
+                    // Dropping the future will block until it's done.
+                    if let Some(mut fut) = previous_frame_end.take() {
+                        fut.cleanup_finished();
+                    }
+                }
+
+                // Mouse Events
+                if now_lmouse && !prev_lmouse {}
+
+                // Keyboard Events
                 if now_keys[VirtualKeyCode::Escape as usize] {
                     *control_flow = ControlFlow::Exit;
                 }
-                if now_keys[VirtualKeyCode::Up as usize] {
-                    color = (color + 1) % colors.len();
+                if now_keys[VirtualKeyCode::LShift as usize]
+                    || now_keys[VirtualKeyCode::RShift as usize]
+                {
+                } else {
                 }
-                if now_keys[VirtualKeyCode::Down as usize] {
-                    color = if color == 0 {
-                        colors.len() - 1
-                    } else {
-                        color - 1
-                    };
-                }
-                if now_keys[VirtualKeyCode::Left as usize] && w > 0 {
-                    w -= 1;
-                }
-                if now_keys[VirtualKeyCode::Right as usize] && w < WIDTH - 1 {
-                    w += 1;
-                }
-                // Exercise for the reader: Tie y to mouse movement
 
+                if now_keys[VirtualKeyCode::Up as usize]
+                    && !prev_keys[VirtualKeyCode::Up as usize]
+                    && !dash
+                {
+                    vy = -5.0;
+                }
+
+                if now_keys[VirtualKeyCode::Down as usize]
+                    && !prev_keys[VirtualKeyCode::Up as usize]
+                    && !dash
+                {
+                    dash = true;
+                    vx = 0.0;
+                    vy = 0.0;
+                    ax = 0.0;
+                    ay = 0.0;
+                }
+                if now_keys[VirtualKeyCode::Left as usize] {
+                    if dash {
+                        dash = false;
+                        ay = 0.2;
+                        player.change_color_to(white);
+                        vx = -(dash_count as f32 / 25.0);
+                        dash_count = 0;
+                    } else {
+                        if vx > -2.0 {
+                            ax = -0.2;
+                        } else {
+                            ax = 0.0
+                        }
+                    }
+                } else if now_keys[VirtualKeyCode::Right as usize] {
+                    if dash {
+                        dash = false;
+                        ay = 0.2;
+                        player.change_color_to(white);
+                        vx = dash_count as f32 / 25.0;
+                        dash_count = 0;
+                    } else {
+                        if vx < 2.0 {
+                            ax = 0.2;
+                        } else {
+                            ax = 0.0
+                        }
+                    }
+                } else {
+                    if vx > 0.09 {
+                        ax = -0.1
+                    } else if vx < -0.09 {
+                        ax = 0.1
+                    } else {
+                        ax = 0.0
+                    }
+                }
                 // It's debatable whether the following code should live here or in the drawing section.
                 // First clear the framebuffer...
                 fb2d.clear((128, 64, 64, 255));
