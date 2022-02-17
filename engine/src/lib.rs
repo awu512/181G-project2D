@@ -66,7 +66,7 @@ pub struct Vk {
     swapchain: Arc<Swapchain<Window>>,
     images: Vec<Arc<SwapchainImage<Window>>>,
     vs: Arc<ShaderModule>,
-    fs: Arc<ShaderModule>
+    fs: Arc<ShaderModule>,
 }
 
 impl Vk {
@@ -77,56 +77,56 @@ impl Vk {
         let surface = WindowBuilder::new()
             .build_vk_surface(&event_loop, instance.clone())
             .unwrap();
-    
-            let device_extensions = DeviceExtensions {
-                khr_swapchain: true,
-                ..DeviceExtensions::none()
-            };
-            let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-                .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
-                .filter_map(|p| {
-                    p.queue_families()
-                        .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
-                        .map(|q| (p, q))
-                })
-                .min_by_key(|(p, _)| match p.properties().device_type {
-                    PhysicalDeviceType::DiscreteGpu => 0,
-                    PhysicalDeviceType::IntegratedGpu => 1,
-                    PhysicalDeviceType::VirtualGpu => 2,
-                    PhysicalDeviceType::Cpu => 3,
-                    PhysicalDeviceType::Other => 4,
-                })
-                .unwrap();
-            let (device, mut queues) = Device::new(
-                physical_device,
-                &Features::none(),
-                &physical_device
-                    .required_extensions()
-                    .union(&device_extensions),
-                [(queue_family, 0.5)].iter().cloned(),
-            )
-            .unwrap();
-            let queue = queues.next().unwrap();
-            let (mut swapchain, images) = {
-                let caps = surface.capabilities(physical_device).unwrap();
-                let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
-                let format = caps.supported_formats[0].0;
-                let dimensions: [u32; 2] = surface.window().inner_size().into();
-                Swapchain::start(device.clone(), surface.clone())
-                    .num_images(caps.min_image_count)
-                    .format(format)
-                    .dimensions(dimensions)
-                    .usage(ImageUsage::color_attachment())
-                    .sharing_mode(&queue)
-                    .composite_alpha(composite_alpha)
-                    .build()
-                    .unwrap()
-            };
 
-            mod vs {
-                vulkano_shaders::shader! {
-                    ty: "vertex",
-                    src: "
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::none()
+        };
+        let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+            .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+            .filter_map(|p| {
+                p.queue_families()
+                    .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+                    .map(|q| (p, q))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+            })
+            .unwrap();
+        let (device, mut queues) = Device::new(
+            physical_device,
+            &Features::none(),
+            &physical_device
+                .required_extensions()
+                .union(&device_extensions),
+            [(queue_family, 0.5)].iter().cloned(),
+        )
+        .unwrap();
+        let queue = queues.next().unwrap();
+        let (mut swapchain, images) = {
+            let caps = surface.capabilities(physical_device).unwrap();
+            let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
+            let format = caps.supported_formats[0].0;
+            let dimensions: [u32; 2] = surface.window().inner_size().into();
+            Swapchain::start(device.clone(), surface.clone())
+                .num_images(caps.min_image_count)
+                .format(format)
+                .dimensions(dimensions)
+                .usage(ImageUsage::color_attachment())
+                .sharing_mode(&queue)
+                .composite_alpha(composite_alpha)
+                .build()
+                .unwrap()
+        };
+
+        mod vs {
+            vulkano_shaders::shader! {
+                ty: "vertex",
+                src: "
                         #version 450
         
                         layout(location = 0) in vec2 position;
@@ -137,13 +137,13 @@ impl Vk {
                             out_uv = uv;
                         }
                     "
-                }
             }
-        
-            mod fs {
-                vulkano_shaders::shader! {
-                    ty: "fragment",
-                    src: "
+        }
+
+        mod fs {
+            vulkano_shaders::shader! {
+                ty: "fragment",
+                src: "
                         #version 450
         
                         layout(set = 0, binding = 0) uniform sampler2D tex;
@@ -154,12 +154,11 @@ impl Vk {
                             f_color = texture(tex, uv);
                         }
                     "
-                }
             }
-        
-            let vs = vs::load(device.clone()).unwrap();
-            let fs = fs::load(device.clone()).unwrap();
-    
+        }
+
+        let vs = vs::load(device.clone()).unwrap();
+        let fs = fs::load(device.clone()).unwrap();
         Vk {
             instance,
             event_loop,
@@ -170,7 +169,7 @@ impl Vk {
             swapchain,
             images,
             vs,
-            fs
+            fs,
         }
     }
 }
@@ -180,7 +179,7 @@ pub struct VkState {
     viewport: Viewport,
     framebuffers: Vec<Arc<Framebuffer>>,
     recreate_swapchain: bool,
-    previous_frame_end: Option<Box<dyn GpuFuture>>
+    previous_frame_end: Option<Box<dyn GpuFuture>>,
 }
 
 impl VkState {
@@ -209,7 +208,8 @@ impl VkState {
             depth_range: 0.0..1.0,
         };
 
-        let mut framebuffers = window_size_dependent_setup(&vk.images, render_pass.clone(), &mut viewport);
+        let mut framebuffers =
+            window_size_dependent_setup(&vk.images, render_pass.clone(), &mut viewport);
 
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
@@ -219,7 +219,7 @@ impl VkState {
             viewport,
             framebuffers,
             recreate_swapchain,
-            previous_frame_end
+            previous_frame_end,
         }
     }
 }
@@ -230,7 +230,7 @@ pub struct FBState {
     fb2d_buffer: Arc<CpuAccessibleBuffer<[Color]>>,
     fb2d_image: Arc<StorageImage>,
     set: Arc<PersistentDescriptorSet>,
-    fb2d: fb2d::Fb2d
+    fb2d: fb2d::Fb2d,
 }
 
 impl FBState {
@@ -292,7 +292,6 @@ impl FBState {
         .unwrap();
         // Get a view on it to use as a texture:
         let fb2d_texture = ImageView::new(fb2d_image.clone()).unwrap();
-    
         let fb2d_sampler = Sampler::new(
             vk.device.clone(),
             Filter::Linear,
@@ -333,7 +332,7 @@ impl FBState {
             fb2d_buffer,
             fb2d_image,
             set,
-            fb2d
+            fb2d,
         }
     }
 }
@@ -562,10 +561,9 @@ pub fn main(mut fb2d: fb2d::Fb2d) {
     let mut vk = Vk::new();
     let mut vk_state = VkState::new(&vk);
 
-    let mut fb2d = fb2d::Fb2d::new((0,100,200,255));
+    let mut fb2d = fb2d::Fb2d::new((0, 100, 200, 255));
 
     let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
-    
 
     let y = 50;
 
@@ -579,8 +577,6 @@ pub fn main(mut fb2d: fb2d::Fb2d) {
     ];
     let mut color = 0;
     let mut w = 0;
-    
-    
 
     let mut now_keys = [false; 255];
     let mut prev_keys = now_keys.clone();
