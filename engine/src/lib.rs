@@ -11,6 +11,7 @@
 
 pub mod types;
 
+
 use png;
 use std::io::Cursor;
 use std::sync::Arc;
@@ -20,7 +21,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceExtensions, Features, Queue, QueuesIter};
 use vulkano::format::Format;
 
 use vulkano::image::ImageCreateFlags;
@@ -35,7 +36,8 @@ use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
-use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::shader::ShaderModule;
+use vulkano::swapchain::{self, AcquireError, Surface, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
@@ -50,6 +52,296 @@ const SPRITE_RECT_HEIGHT: usize = 320;
 
 #[allow(dead_code)]
 type Animation = (Vec<(usize, usize)>, Vec<f32>, bool);
+
+
+#[derive(Default, Debug, Clone)]
+struct Vertex {
+    position: [f32; 2],
+    uv: [f32; 2],
+}
+vulkano::impl_vertex!(Vertex, position, uv);
+
+pub struct Vk {
+    instance: Arc<Instance>,
+    event_loop: EventLoop<()>,
+    surface: Arc<Surface<Window>>,
+    device: Arc<Device>,
+    queues: QueuesIter,
+    queue: Arc<Queue>,
+    swapchain: Arc<Swapchain<Window>>,
+    images: Vec<Arc<SwapchainImage<Window>>>,
+    vs: Arc<ShaderModule>,
+    fs: Arc<ShaderModule>
+}
+
+impl Vk {
+    pub fn new() -> Self {
+        let required_extensions = vulkano_win::required_extensions();
+        let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+        let event_loop = EventLoop::new();
+        let surface = WindowBuilder::new()
+            .build_vk_surface(&event_loop, instance.clone())
+            .unwrap();
+    
+            let device_extensions = DeviceExtensions {
+                khr_swapchain: true,
+                ..DeviceExtensions::none()
+            };
+            let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+                .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+                .filter_map(|p| {
+                    p.queue_families()
+                        .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+                        .map(|q| (p, q))
+                })
+                .min_by_key(|(p, _)| match p.properties().device_type {
+                    PhysicalDeviceType::DiscreteGpu => 0,
+                    PhysicalDeviceType::IntegratedGpu => 1,
+                    PhysicalDeviceType::VirtualGpu => 2,
+                    PhysicalDeviceType::Cpu => 3,
+                    PhysicalDeviceType::Other => 4,
+                })
+                .unwrap();
+            let (device, mut queues) = Device::new(
+                physical_device,
+                &Features::none(),
+                &physical_device
+                    .required_extensions()
+                    .union(&device_extensions),
+                [(queue_family, 0.5)].iter().cloned(),
+            )
+            .unwrap();
+            let queue = queues.next().unwrap();
+            let (mut swapchain, images) = {
+                let caps = surface.capabilities(physical_device).unwrap();
+                let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
+                let format = caps.supported_formats[0].0;
+                let dimensions: [u32; 2] = surface.window().inner_size().into();
+                Swapchain::start(device.clone(), surface.clone())
+                    .num_images(caps.min_image_count)
+                    .format(format)
+                    .dimensions(dimensions)
+                    .usage(ImageUsage::color_attachment())
+                    .sharing_mode(&queue)
+                    .composite_alpha(composite_alpha)
+                    .build()
+                    .unwrap()
+            };
+
+            mod vs {
+                vulkano_shaders::shader! {
+                    ty: "vertex",
+                    src: "
+                        #version 450
+        
+                        layout(location = 0) in vec2 position;
+                        layout(location = 1) in vec2 uv;
+                        layout(location = 0) out vec2 out_uv;
+                        void main() {
+                            gl_Position = vec4(position, 0.0, 1.0);
+                            out_uv = uv;
+                        }
+                    "
+                }
+            }
+        
+            mod fs {
+                vulkano_shaders::shader! {
+                    ty: "fragment",
+                    src: "
+                        #version 450
+        
+                        layout(set = 0, binding = 0) uniform sampler2D tex;
+                        layout(location = 0) in vec2 uv;
+                        layout(location = 0) out vec4 f_color;
+        
+                        void main() {
+                            f_color = texture(tex, uv);
+                        }
+                    "
+                }
+            }
+        
+            let vs = vs::load(device.clone()).unwrap();
+            let fs = fs::load(device.clone()).unwrap();
+    
+        Vk {
+            instance,
+            event_loop,
+            surface,
+            device,
+            queues,
+            queue,
+            swapchain,
+            images,
+            vs,
+            fs
+        }
+    }
+}
+
+pub struct VkState {
+    render_pass: Arc<RenderPass>,
+    viewport: Viewport,
+    framebuffers: Vec<Arc<Framebuffer>>,
+    recreate_swapchain: bool,
+    previous_frame_end: Option<Box<dyn GpuFuture>>
+}
+
+impl VkState {
+    pub fn new(vk: &Vk) -> Self {
+        let render_pass = vulkano::single_pass_renderpass!(
+            vk.device.clone(),
+            attachments: {
+                color: {
+                    // Pro move: We're going to cover the screen completely. Trust us!
+                    load: DontCare,
+                    store: Store,
+                    format: vk.swapchain.format(),
+                    samples: 1,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
+
+        let mut viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [0.0, 0.0],
+            depth_range: 0.0..1.0,
+        };
+
+        let mut framebuffers = window_size_dependent_setup(&vk.images, render_pass.clone(), &mut viewport);
+
+        let mut recreate_swapchain = false;
+        let mut previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
+
+        VkState {
+            render_pass,
+            viewport,
+            framebuffers,
+            recreate_swapchain,
+            previous_frame_end
+        }
+    }
+}
+
+pub struct FBState {
+    pipeline: Arc<GraphicsPipeline>,
+    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
+    fb2d_buffer: Arc<CpuAccessibleBuffer<[Color]>>,
+    fb2d_image: Arc<StorageImage>,
+    set: Arc<PersistentDescriptorSet>,
+    fb2d: fb2d::Fb2d
+}
+
+impl FBState {
+    pub fn new(vk: &Vk, vk_state: &VkState, fb2d: fb2d::Fb2d) -> Self {
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
+            vk.device.clone(),
+            BufferUsage::all(),
+            false,
+            [
+                Vertex {
+                    position: [-1.0, -1.0],
+                    uv: [0.0, 0.0],
+                },
+                Vertex {
+                    position: [3.0, -1.0],
+                    uv: [2.0, 0.0],
+                },
+                Vertex {
+                    position: [-1.0, 3.0],
+                    uv: [0.0, 2.0],
+                },
+            ]
+            .iter()
+            .cloned(),
+        )
+        .unwrap();
+
+        let fb2d_buffer = CpuAccessibleBuffer::from_iter(
+            vk.device.clone(),
+            BufferUsage::transfer_source(),
+            false,
+            (0..WIDTH * HEIGHT).map(|_| (255_u8, 0_u8, 0_u8, 0_u8)),
+        )
+        .unwrap();
+        // Let's set up the Image we'll copy into:
+        let dimensions = ImageDimensions::Dim2d {
+            width: WIDTH as u32,
+            height: HEIGHT as u32,
+            array_layers: 1,
+        };
+        let fb2d_image = StorageImage::with_usage(
+            vk.device.clone(),
+            dimensions,
+            Format::R8G8B8A8_UNORM,
+            ImageUsage {
+                // This part is key!
+                transfer_destination: true,
+                sampled: true,
+                storage: true,
+                transfer_source: false,
+                color_attachment: false,
+                depth_stencil_attachment: false,
+                transient_attachment: false,
+                input_attachment: false,
+            },
+            ImageCreateFlags::default(),
+            std::iter::once(vk.queue.family()),
+        )
+        .unwrap();
+        // Get a view on it to use as a texture:
+        let fb2d_texture = ImageView::new(fb2d_image.clone()).unwrap();
+    
+        let fb2d_sampler = Sampler::new(
+            vk.device.clone(),
+            Filter::Linear,
+            Filter::Linear,
+            MipmapMode::Nearest,
+            SamplerAddressMode::Repeat,
+            SamplerAddressMode::Repeat,
+            SamplerAddressMode::Repeat,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )
+        .unwrap();
+
+        let pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+            .vertex_shader(vk.vs.entry_point("main").unwrap(), ())
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(vk.fs.entry_point("main").unwrap(), ())
+            .render_pass(Subpass::from(vk_state.render_pass.clone(), 0).unwrap())
+            .build(vk.device.clone())
+            .unwrap();
+
+        let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+        let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        set_builder
+            .add_sampled_image(fb2d_texture, fb2d_sampler)
+            .unwrap();
+
+        let set = set_builder.build().unwrap();
+
+        FBState {
+            pipeline,
+            vertex_buffer,
+            fb2d_buffer,
+            fb2d_image,
+            set,
+            fb2d
+        }
+    }
+}
 
 #[derive(Copy, Clone)]
 struct Rect2 {
@@ -114,248 +406,16 @@ impl Rect2 {
     }
 }
 
-pub fn main() {
-    // Steps to take to take out code for the engine.
-    // update fn
-    // current game state, input state, ref to the engine
-    // draw fn
-    // image(fb), immutable ref to gamestate
-    // winit init, vulkan init, game init
-    let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
-    let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::none()
-    };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
-        .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
-                .map(|q| (p, q))
-        })
-        .min_by_key(|(p, _)| match p.properties().device_type {
-            PhysicalDeviceType::DiscreteGpu => 0,
-            PhysicalDeviceType::IntegratedGpu => 1,
-            PhysicalDeviceType::VirtualGpu => 2,
-            PhysicalDeviceType::Cpu => 3,
-            PhysicalDeviceType::Other => 4,
-        })
-        .unwrap();
-    let (device, mut queues) = Device::new(
-        physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
+pub fn main(mut fb2d: fb2d::Fb2d) {
+    let mut vk = Vk::new();
+    let mut vk_state = VkState::new(&vk);
 
-    // function that right now just arbitrarily picks a
-    // present mode, but can be rewritten so that it picks
-    // the optimal present mode (hence the name) - fatuma :)
-    fn best_present_mode(
-        caps: vulkano::swapchain::Capabilities,
-    ) -> vulkano::swapchain::PresentMode {
-        [
-            vulkano::swapchain::PresentMode::Mailbox,
-            vulkano::swapchain::PresentMode::Immediate,
-        ]
-        .into_iter()
-        .find(|mode| caps.present_modes.supports(*mode))
-        .unwrap_or(vulkano::swapchain::PresentMode::Fifo)
-    }
-
-    let queue = queues.next().unwrap();
-    let (mut swapchain, images) = {
-        let caps = surface.capabilities(physical_device).unwrap();
-        let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
-        let format = caps.supported_formats[0].0;
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
-        Swapchain::start(device.clone(), surface.clone())
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(ImageUsage::color_attachment())
-            .sharing_mode(&queue)
-            .composite_alpha(composite_alpha)
-            .present_mode(best_present_mode(caps))
-            .build()
-            .unwrap()
-    };
-
-    // We now create a buffer that will store the shape of our triangle.
-    #[derive(Default, Debug, Clone)]
-    struct Vertex {
-        position: [f32; 2],
-        uv: [f32; 2],
-    }
-    vulkano::impl_vertex!(Vertex, position, uv);
-
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
-        false,
-        [
-            Vertex {
-                position: [-1.0, -1.0],
-                uv: [0.0, 0.0],
-            },
-            Vertex {
-                position: [3.0, -1.0],
-                uv: [2.0, 0.0],
-            },
-            Vertex {
-                position: [-1.0, 3.0],
-                uv: [0.0, 2.0],
-            },
-        ]
-        .iter()
-        .cloned(),
-    )
-    .unwrap();
-    mod vs {
-        vulkano_shaders::shader! {
-            ty: "vertex",
-            src: "
-                #version 450
-
-                layout(location = 0) in vec2 position;
-                layout(location = 1) in vec2 uv;
-                layout(location = 0) out vec2 out_uv;
-                void main() {
-                    gl_Position = vec4(position, 0.0, 1.0);
-                    out_uv = uv;
-                }
-            "
-        }
-    }
-
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            src: "
-                #version 450
-
-                layout(set = 0, binding = 0) uniform sampler2D tex;
-                layout(location = 0) in vec2 uv;
-                layout(location = 0) out vec4 f_color;
-
-                void main() {
-                    f_color = texture(tex, uv);
-                }
-            "
-        }
-    }
-
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
-    // Define the framebuffer as an image.
     let mut fb2d = Image {
         buffer: vec![(0, 0, 0, 255); (HEIGHT * WIDTH) as usize].into_boxed_slice(),
         sz: Vec2i {
             x: WIDTH as i32,
             y: HEIGHT as i32,
         },
-    };
-    // We'll work on it locally, and copy it to a GPU buffer every frame.
-    // Then on the GPU, we'll copy it into an Image.
-    let fb2d_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::transfer_source(),
-        false,
-        (0..WIDTH * HEIGHT).map(|_| (255_u8, 0_u8, 0_u8, 0_u8)),
-    )
-    .unwrap();
-    // Let's set up the Image we'll copy into:
-    let dimensions = ImageDimensions::Dim2d {
-        width: WIDTH as u32,
-        height: HEIGHT as u32,
-        array_layers: 1,
-    };
-    let fb2d_image = StorageImage::with_usage(
-        device.clone(),
-        dimensions,
-        Format::R8G8B8A8_UNORM,
-        ImageUsage {
-            // This part is key!
-            transfer_destination: true,
-            sampled: true,
-            storage: true,
-            transfer_source: false,
-            color_attachment: false,
-            depth_stencil_attachment: false,
-            transient_attachment: false,
-            input_attachment: false,
-        },
-        ImageCreateFlags::default(),
-        std::iter::once(queue_family),
-    )
-    .unwrap();
-    // Get a view on it to use as a texture:
-    let fb2d_texture = ImageView::new(fb2d_image.clone()).unwrap();
-
-    let fb2d_sampler = Sampler::new(
-        device.clone(),
-        Filter::Linear,
-        Filter::Linear,
-        MipmapMode::Nearest,
-        SamplerAddressMode::Repeat,
-        SamplerAddressMode::Repeat,
-        SamplerAddressMode::Repeat,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-    )
-    .unwrap();
-
-    let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
-        attachments: {
-            color: {
-                // Pro move: We're going to cover the screen completely. Trust us!
-                load: DontCare,
-                store: Store,
-                format: swapchain.format(),
-                samples: 1,
-            }
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {}
-        }
-    )
-    .unwrap();
-    let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-        .build(device.clone())
-        .unwrap();
-
-    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-    set_builder
-        .add_sampled_image(fb2d_texture, fb2d_sampler)
-        .unwrap();
-
-    let set = set_builder.build().unwrap();
-
-    let mut viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [0.0, 0.0],
-        depth_range: 0.0..1.0,
     };
 
     let mut sprite_num = 1;
@@ -368,9 +428,7 @@ pub fn main() {
     };
     let mut to = Vec2i { x: 0, y: 0 };
     let sprite_sheet_image = Image::from_file(std::path::Path::new("../engine/spritesheet.png"));
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
-    let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+    let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
 
     let mut now_keys = [false; 255];
     let mut prev_keys = now_keys.clone();
@@ -398,7 +456,7 @@ pub fn main() {
     let mut ax = 0.0;
     let mut ay = 0.2;
 
-    event_loop.run(move |event, _, control_flow| {
+    vk.event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -410,7 +468,7 @@ pub fn main() {
                 event: WindowEvent::Resized(_),
                 ..
             } => {
-                recreate_swapchain = true;
+                vk_state.recreate_swapchain = true;
             }
             Event::NewEvents(_) => {
                 // Leave now_keys alone, but copy over all changed keys
@@ -470,7 +528,7 @@ pub fn main() {
                     // We need to synchronize here to send new data to the GPU.
                     // We can't send the new framebuffer until the previous frame is done being drawn.
                     // Dropping the future will block until it's done.
-                    if let Some(mut fut) = previous_frame_end.take() {
+                    if let Some(mut fut) = vk_state.previous_frame_end.take() {
                         fut.cleanup_finished();
                     }
                 }
@@ -572,73 +630,75 @@ pub fn main() {
                     // We need to synchronize here to send new data to the GPU.
                     // We can't send the new framebuffer until the previous frame is done being drawn.
                     // Dropping the future will block until it's done.
-                    if let Some(mut fut) = previous_frame_end.take() {
+                    if let Some(mut fut) = vk_state.previous_frame_end.take() {
                         fut.cleanup_finished();
                     }
                 }
                 // Now we can copy into our buffer.
                 {
-                    let writable_fb = &mut *fb2d_buffer.write().unwrap();
-                    writable_fb.copy_from_slice(&fb2d.buffer);
+                    let writable_fb = &mut *fb_state.fb2d_buffer.write().unwrap();
+                    writable_fb.copy_from_slice(&fb2d.array);
                 }
-                if recreate_swapchain {
-                    let dimensions: [u32; 2] = surface.window().inner_size().into();
+
+                let swapchain_start = Instant::now();
+                if vk_state.recreate_swapchain {
+                    let dimensions: [u32; 2] = vk.surface.window().inner_size().into();
                     let (new_swapchain, new_images) =
-                        match swapchain.recreate().dimensions(dimensions).build() {
+                        match vk.swapchain.recreate().dimensions(dimensions).build() {
                             Ok(r) => r,
                             Err(SwapchainCreationError::UnsupportedDimensions) => return,
                             Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
                         };
 
-                    swapchain = new_swapchain;
-                    framebuffers = window_size_dependent_setup(
+                    vk.swapchain = new_swapchain;
+                    vk_state.framebuffers = window_size_dependent_setup(
                         &new_images,
-                        render_pass.clone(),
-                        &mut viewport,
+                        vk_state.render_pass.clone(),
+                        &mut vk_state.viewport,
                     );
-                    recreate_swapchain = false;
+                    vk_state.recreate_swapchain = false;
                 }
                 let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(swapchain.clone(), None) {
+                    match swapchain::acquire_next_image(vk.swapchain.clone(), None) {
                         Ok(r) => r,
                         Err(AcquireError::OutOfDate) => {
-                            recreate_swapchain = true;
+                            vk_state.recreate_swapchain = true;
                             return;
                         }
                         Err(e) => panic!("Failed to acquire next image: {:?}", e),
                     };
                 if suboptimal {
-                    recreate_swapchain = true;
+                    vk_state.recreate_swapchain = true;
                 }
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    device.clone(),
-                    queue.family(),
+                    vk.device.clone(),
+                    vk.queue.family(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
 
                 builder
                     // Now copy that framebuffer buffer into the framebuffer image
-                    .copy_buffer_to_image(fb2d_buffer.clone(), fb2d_image.clone())
+                    .copy_buffer_to_image(fb_state.fb2d_buffer.clone(), fb_state.fb2d_image.clone())
                     .unwrap()
                     // And resume our regularly scheduled programming
                     .begin_render_pass(
-                        framebuffers[image_num].clone(),
+                        vk_state.framebuffers[image_num].clone(),
                         SubpassContents::Inline,
                         std::iter::once(vulkano::format::ClearValue::None),
                     )
                     .unwrap()
-                    .set_viewport(0, [viewport.clone()])
-                    .bind_pipeline_graphics(pipeline.clone())
+                    .set_viewport(0, [vk_state.viewport.clone()])
+                    .bind_pipeline_graphics(fb_state.pipeline.clone())
                     .bind_descriptor_sets(
                         PipelineBindPoint::Graphics,
-                        pipeline.layout().clone(),
+                        fb_state.pipeline.layout().clone(),
                         0,
-                        set.clone(),
+                        fb_state.set.clone(),
                     )
-                    .bind_vertex_buffers(0, vertex_buffer.clone())
-                    .draw(vertex_buffer.len() as u32, 1, 0, 0)
+                    .bind_vertex_buffers(0, fb_state.vertex_buffer.clone())
+                    .draw(fb_state.vertex_buffer.len() as u32, 1, 0, 0)
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
@@ -646,22 +706,22 @@ pub fn main() {
                 let command_buffer = builder.build().unwrap();
 
                 let future = acquire_future
-                    .then_execute(queue.clone(), command_buffer)
+                    .then_execute(vk.queue.clone(), command_buffer)
                     .unwrap()
-                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                    .then_swapchain_present(vk.queue.clone(), vk.swapchain.clone(), image_num)
                     .then_signal_fence_and_flush();
 
                 match future {
                     Ok(future) => {
-                        previous_frame_end = Some(future.boxed());
+                        vk_state.previous_frame_end = Some(future.boxed());
                     }
                     Err(FlushError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        vk_state.recreate_swapchain = true;
+                        vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
                     }
                     Err(e) => {
                         println!("Failed to flush future: {:?}", e);
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
                     }
                 }
             }
