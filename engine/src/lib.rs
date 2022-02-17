@@ -167,6 +167,15 @@ impl Fb2d {
         self.array.fill(c);
     }
 
+    pub fn to_image(&mut self) -> Image {
+        Image {
+            buffer: Box::new(self.array),
+            sz: Vec2i {
+                x: HEIGHT as i32,
+                y: WIDTH as i32,
+            },
+        }
+    }
     #[allow(dead_code)]
     pub fn hline(&mut self, x0: usize, x1: usize, y: usize, c: Color) {
         assert!(y < HEIGHT);
@@ -737,6 +746,17 @@ pub fn main(mut fb2d: Fb2d) {
         (0, 255, 0, 255),
         (0, 0, 0, 255),
     ];
+
+    let from = Rect {
+        pos: Vec2i { x: 0, y: 0 },
+        sz: Vec2i { x: 320, y: 320 },
+    };
+    let to = Vec2i { x: 320, y: 320 };
+    let sprite_sheet_image = Image::from_file(std::path::Path::new(
+        "/Users/zintan/spring2022/cs181G/181G-project2D/engine/spritesheet.png",
+    ));
+    premultiply(&mut fb2d.array, AlphaChannel::First);
+    let mut fb2d_img = fb2d.to_image();
     let mut color = 0;
     let mut rect_w = 0;
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
@@ -918,10 +938,11 @@ pub fn main(mut fb2d: Fb2d) {
                 // It's debatable whether the following code should live here or in the drawing section.
                 // First clear the framebuffer...
                 fb2d.clear((128, 64, 64, 255));
+                fb2d_img.bitblt(&sprite_sheet_image, from, to);
                 // Then draw our shapes:
-                fb2d.draw_filled_rect(y, rect_w, colors[color]);
-                fb2d.draw_outlined_rect(y + 20, rect_w, colors[color]);
-                fb2d.diagonal_line((0, 0), (rect_w, y + 40), colors[color]);
+                // fb2d.draw_filled_rect(y, rect_w, colors[color]);
+                // fb2d.draw_outlined_rect(y + 20, rect_w, colors[color]);
+                // fb2d.diagonal_line((0, 0), (rect_w, y + 40), colors[color]);
                 {
                     // We need to synchronize here to send new data to the GPU.
                     // We can't send the new framebuffer until the previous frame is done being drawn.
