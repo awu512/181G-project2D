@@ -9,21 +9,22 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub mod fb2d;
+pub mod types;
 
 use png;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
+use types::{Color, Image, Rect, Vec2i};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue, QueuesIter};
 use vulkano::format::Format;
-use vulkano::image::immutable::ImmutableImage;
+
 use vulkano::image::ImageCreateFlags;
-use vulkano::image::MipmapsCount;
+
 use vulkano::image::{
     view::ImageView, ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
 };
@@ -43,11 +44,13 @@ use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
-// We'll make our Color type an RGBA8888 pixel.
-pub type Color = (u8, u8, u8, u8);
-
 const WIDTH: usize = 320;
-const HEIGHT: usize = 240;
+const HEIGHT: usize = 320;
+const SPRITE_RECT_WIDTH: usize = 165;
+const SPRITE_RECT_HEIGHT: usize = 320;
+
+#[allow(dead_code)]
+type Animation = (Vec<(usize, usize)>, Vec<f32>, bool);
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
@@ -230,11 +233,11 @@ pub struct FBState {
     fb2d_buffer: Arc<CpuAccessibleBuffer<[Color]>>,
     fb2d_image: Arc<StorageImage>,
     set: Arc<PersistentDescriptorSet>,
-    fb2d: fb2d::Fb2d,
+    fb2d: Image,
 }
 
 impl FBState {
-    pub fn new(vk: &Vk, vk_state: &VkState, fb2d: fb2d::Fb2d) -> Self {
+    pub fn new(vk: &Vk, vk_state: &VkState, fb2d: Image) -> Self {
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             vk.device.clone(),
             BufferUsage::all(),
@@ -337,169 +340,6 @@ impl FBState {
     }
 }
 
-type Animation = (Vec<(usize, usize)>, Vec<f32>, bool);
-
-enum AlphaChannel {
-    First,
-    Last,
-}
-// fn premultiply(img: &mut [Color], alpha: AlphaChannel) {
-//     match alpha {
-//         AlphaChannel::First => {
-//             for px in img.iter_mut() {
-//                 let a = px.0 as f32 / 255.0;
-//                 px.1 = (*px.1 as f32 * a).round() as u8;
-//                 px.2 = (*px.2 as f32 * a).round() as u8;
-//                 px.3 = (*px.3 as f32 * a).round() as u8;
-//                 // swap around to rgba8888
-//                 let a = px.0;
-//                 px.0 = px.1;
-//                 px.1 = px.2;
-//                 px.2 = px.3;
-//                 px.3 = a;
-//             }
-//         }
-//         AlphaChannel::Last => {
-//             for px in img.iter_mut() {
-//                 let a = px.3.unwrap() as f32 / 255.0;
-//                 px.0 = (px.0 as f32 * a) as u8;
-//                 px.1 = (px.1 as f32 * a) as u8;
-//                 px.2 = (px.2 as f32 * a) as u8;
-//                 // already rgba8888
-//             }
-//         }
-//     }
-// }
-
-#[derive(PartialEq, Eq, Clone, Copy, Hash, Debug)]
-pub struct Rect {
-    pub x: i32,
-    pub y: i32,
-    pub w: u32,
-    pub h: u32, // Float positions and extents could also be fine
-}
-
-impl Rect {
-    pub fn new(x: i32, y: i32, w: u32, h: u32) -> Rect {
-        Rect { x, y, w, h }
-    }
-    // Maybe add functions to test if a point is inside the rect...
-    // Or whether two rects overlap...
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Hash, Debug)]
-pub struct Vec2i {
-    // Or Vec2f for floats?
-    pub x: i32,
-    pub y: i32,
-}
-
-impl Vec2i {
-    pub fn new(x: i32, y: i32) -> Vec2i {
-        Vec2i { x, y }
-    }
-    // Maybe add functions for e.g. the midpoint of two vecs, or...
-}
-
-pub struct Image {
-    pub buffer: Box<[Color]>, // or Vec<Color>, or...
-    pub w: usize,
-    pub h: usize,
-}
-
-// impl Image {
-//     fn get_png() {
-//         let png_bytes = include_bytes!("../../hoophorse/content/spritesheet.png").to_vec();
-//         let cursor = Cursor::new(png_bytes);
-//         let decoder = png::Decoder::new(cursor);
-//         let mut reader = decoder.read_info().unwrap();
-//         let info = reader.info();
-//         let dimensions = ImageDimensions::Dim2d {
-//             width: info.width,
-//             height: info.height,
-//             array_layers: 1,
-//         };
-//         let mut image_data = Vec::new();
-//         image_data.resize((info.width * info.height * 4) as usize, 0);
-//         reader.next_frame(&mut image_data).unwrap();
-
-//         let (image, future) = ImmutableImage::from_iter(
-//             image_data.iter().cloned(),
-//             dimensions,
-//             MipmapsCount::One,
-//             Format::R8G8B8A8_SRGB,
-//             queue.clone(),
-//         )
-//         .unwrap();
-//         (ImageView::new(image).unwrap(), future)
-//     }
-
-//     // maybe put bitblt into here?
-//     pub fn bitblt(src: &Image, from: Rect, dst: &mut Image, to: Vec2) {
-//         assert!(rect_inside(from, (0, 0, src_size.0, src_size.1)));
-//         let (to_x, to_y) = to;
-//         if (to_x + from.x as i32) < 0
-//             || (dst_size.0 as i32) <= to_x
-//             || (to_y + from.3 as i32) < 0
-//             || (dst_size.1 as i32) <= to_y
-//         {
-//             return;
-//         }
-//         let src_pitch = src_size.0;
-//         let dst_pitch = dst_size.0;
-//         // All this rigmarole is just to avoid bounds checks on each pixel of the blit.
-//         // We want to calculate which row/col of the src image to start at and which to end at.
-//         // This way there's no need to even check for out of bounds draws---
-//         // we'll skip rows that are off the top or off the bottom of the image
-//         // and skip columns off the left or right sides.
-//         let y_skip = to_y.max(0) - to_y;
-//         let x_skip = to_x.max(0) - to_x;
-//         let y_count = (to_y + from.3 as i32).min(dst_size.1 as i32) - to_y;
-//         let x_count = (to_x + from.2 as i32).min(dst_size.0 as i32) - to_x;
-//         // The code above is gnarly so these are just for safety:
-//         debug_assert!(0 <= x_skip);
-//         debug_assert!(0 <= y_skip);
-//         debug_assert!(0 <= x_count);
-//         debug_assert!(0 <= y_count);
-//         debug_assert!(x_count <= from.2 as i32);
-//         debug_assert!(y_count <= from.3 as i32);
-//         debug_assert!(0 <= to_x + x_skip);
-//         debug_assert!(0 <= to_y + y_skip);
-//         debug_assert!(0 <= from.0 as i32 + x_skip);
-//         debug_assert!(0 <= from.1 as i32 + y_skip);
-//         debug_assert!(to_x + x_count <= dst_size.0 as i32);
-//         debug_assert!(to_y + y_count <= dst_size.1 as i32);
-//         // OK, let's do some copying now
-//         for (row_a, row_b) in src
-//             // From the first pixel of the top row to the first pixel of the row past the bottom...
-//             [(src_pitch * (from.1 as i32 + y_skip) as usize)..(src_pitch * (from.1 as i32 + y_count) as usize)]
-//             // For each whole row...
-//             .chunks_exact(src_pitch)
-//             // Tie it up with the corresponding row from dst
-//             .zip(
-//                 dst[(dst_pitch * (to_y + y_skip) as usize)
-//                     ..(dst_pitch * (to_y + y_count) as usize)]
-//                     .chunks_exact_mut(dst_pitch),
-//             )
-//             {
-//             // Get column iterators, save on indexing overhead
-//             let to_cols = row_b
-//                 [((to_x + x_skip) as usize)..((to_x + x_count) as usize)].iter_mut();
-//             let from_cols = row_a
-//                 [((from.0 as i32 + x_skip) as usize)..((from.0 as i32 + x_count) as usize)].iter();
-//             // Composite over, assume premultiplied rgba8888 in src!
-//             for (to, from) in to_cols.zip(from_cols) {
-//                 let ta = to.3 as f32 / 255.0;
-//                 let fa = from.3 as f32 / 255.0;
-//                 to.0 = from.0.saturating_add((to.0 as f32 * (1.0 - fa)).round() as u8);
-//                 to.1 = from.1.saturating_add((to.1 as f32 * (1.0 - fa)).round() as u8);
-//                 to.2 = from.2.saturating_add((to.2 as f32 * (1.0 - fa)).round() as u8);
-//                 to.3 = ((fa + ta * (1.0 - fa)) * 255.0).round() as u8;
-//             }
-//         }
-//     }
-// }
-
 #[derive(Copy, Clone)]
 struct Rect2 {
     x: usize,
@@ -514,22 +354,27 @@ impl Rect2 {
         self.color = new;
     }
 
+    #[allow(dead_code)]
     fn left(self) -> usize {
         self.x
     }
 
+    #[allow(dead_code)]
     fn right(self) -> usize {
         self.x + self.width
     }
 
+    #[allow(dead_code)]
     fn top(self) -> usize {
         self.y
     }
 
+    #[allow(dead_code)]
     fn bottom(self) -> usize {
         self.y + self.height
     }
 
+    #[allow(dead_code)]
     fn change_x_by(&mut self, change: f32) {
         let mut x = self.x as f32;
         x = x + change;
@@ -543,6 +388,7 @@ impl Rect2 {
         }
     }
 
+    #[allow(dead_code)]
     fn change_y_by(&mut self, change: f32) {
         let mut y = self.y as f32;
         y = y + change;
@@ -557,26 +403,29 @@ impl Rect2 {
     }
 }
 
-pub fn main(mut fb2d: fb2d::Fb2d) {
+pub fn main() {
     let mut vk = Vk::new();
     let mut vk_state = VkState::new(&vk);
 
-    let mut fb2d = fb2d::Fb2d::new((0, 100, 200, 255));
+    let mut fb2d = Image {
+        buffer: vec![(0, 0, 0, 255); (HEIGHT * WIDTH) as usize].into_boxed_slice(),
+        sz: Vec2i {
+            x: WIDTH as i32,
+            y: HEIGHT as i32,
+        },
+    };
 
+    let mut sprite_num = 1;
+    let mut from = Rect {
+        pos: Vec2i { x: 0, y: 0 },
+        sz: Vec2i {
+            x: SPRITE_RECT_WIDTH as i32,
+            y: SPRITE_RECT_HEIGHT as i32,
+        },
+    };
+    let mut to = Vec2i { x: 0, y: 0 };
+    let sprite_sheet_image = Image::from_file(std::path::Path::new("../engine/spritesheet.png"));
     let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
-
-    let y = 50;
-
-    let colors = [
-        (255, 255, 255, 255),
-        (0, 0, 0, 0),
-        (0, 0, 255, 0),
-        (255, 0, 0, 255),
-        (0, 255, 0, 255),
-        (0, 0, 0, 255),
-    ];
-    let mut color = 0;
-    let mut w = 0;
 
     let mut now_keys = [false; 255];
     let mut prev_keys = now_keys.clone();
@@ -725,6 +574,17 @@ pub fn main(mut fb2d: fb2d::Fb2d) {
                             ax = 0.0
                         }
                     }
+                    if !prev_keys[VirtualKeyCode::Left as usize] {
+                        if sprite_num > 1 {
+                            sprite_num -= 1;
+                            let new_x_pos = (from.pos.x / sprite_num) % WIDTH as i32;
+                            from = Rect {
+                                pos: Vec2i { x: new_x_pos, y: 0 },
+                                sz: Vec2i { x: 165, y: 320 },
+                            };
+                            to = Vec2i { x: new_x_pos, y: 0 };
+                        }
+                    }
                 } else if now_keys[VirtualKeyCode::Right as usize] {
                     if dash {
                         dash = false;
@@ -739,6 +599,17 @@ pub fn main(mut fb2d: fb2d::Fb2d) {
                             ax = 0.0
                         }
                     }
+                    if !prev_keys[VirtualKeyCode::Right as usize] {
+                        if sprite_num < 6 {
+                            let new_x_pos = (SPRITE_RECT_WIDTH as i32 * sprite_num) % WIDTH as i32;
+                            sprite_num += 1;
+                            from = Rect {
+                                pos: Vec2i { x: new_x_pos, y: 0 },
+                                sz: Vec2i { x: 165, y: 320 },
+                            };
+                            to = Vec2i { x: new_x_pos, y: 0 };
+                        }
+                    }
                 } else {
                     if vx > 0.09 {
                         ax = -0.1
@@ -750,11 +621,8 @@ pub fn main(mut fb2d: fb2d::Fb2d) {
                 }
                 // It's debatable whether the following code should live here or in the drawing section.
                 // First clear the framebuffer...
-                fb2d.clear((128, 64, 64, 255));
-                // Then draw our shapes:
-                fb2d.draw_filled_rect(y, w, colors[color]);
-                fb2d.draw_outlined_rect(y + 20, w, colors[color]);
-                fb2d.diagonal_line((0, 0), (w, y + 40), colors[color]);
+                fb_state.fb2d.clear((0, 0, 0, 255));
+                fb_state.fb2d.bitblt(&sprite_sheet_image, from, to);
                 {
                     // We need to synchronize here to send new data to the GPU.
                     // We can't send the new framebuffer until the previous frame is done being drawn.
@@ -764,10 +632,9 @@ pub fn main(mut fb2d: fb2d::Fb2d) {
                     }
                 }
                 // Now we can copy into our buffer.
-                let buffer_copy_start = Instant::now();
                 {
                     let writable_fb = &mut *fb_state.fb2d_buffer.write().unwrap();
-                    writable_fb.copy_from_slice(&fb2d.array);
+                    writable_fb.copy_from_slice(&fb_state.fb2d.buffer);
                 }
 
                 let swapchain_start = Instant::now();
@@ -835,7 +702,6 @@ pub fn main(mut fb2d: fb2d::Fb2d) {
 
                 let command_buffer = builder.build().unwrap();
 
-                let future_start = Instant::now();
                 let future = acquire_future
                     .then_execute(vk.queue.clone(), command_buffer)
                     .unwrap()
