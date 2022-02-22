@@ -10,9 +10,12 @@
 // according to those terms.
 
 pub mod types;
+pub mod tiles;
+use tiles::{Tile, TileID, Tilemap, Tileset};
 
 use png;
 use std::io::Cursor;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 use types::{Color, Image, Rect, Vec2i};
@@ -424,7 +427,7 @@ pub fn main() {
         },
     };
     let mut to = Vec2i { x: 0, y: 0 };
-    let sprite_sheet_image = Image::from_file(std::path::Path::new("../engine/spritesheet.png"));
+    let sprite_sheet_image = Image::from_file(std::path::Path::new("../engine/content/spritesheet.png"));
     let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
 
     let mut now_keys = [false; 255];
@@ -432,26 +435,65 @@ pub fn main() {
 
     let mut now_lmouse = false;
     let mut prev_lmouse = false;
-    let white = (255, 255, 255, 255);
 
-    let w = 5_usize;
-    let h = 10_usize;
+    let w = 16;
+    let h = 32;
 
-    let mut player = Rect2 {
-        x: WIDTH / 2 - w / 2,
-        y: HEIGHT - h,
-        width: w,
-        height: h,
-        color: white,
+    let mut player = Rect {
+        pos: Vec2i { x: (WIDTH as i32)/2 - w/2, y: (HEIGHT as i32) - 48 },
+        sz: Vec2i { x: w, y: h }
     };
-
-    let mut dash = false;
-    let mut dash_count = 0_u8;
 
     let mut vx = 0.0;
     let mut vy = 0.0;
     let mut ax = 0.0;
-    let mut ay = 0.2;
+    let ay = 0.2;
+    
+    let img = Rc::new(Image::from_file(std::path::Path::new("content/tilesheet.png")));
+    let tileset = Rc::new(Tileset::new(
+        vec![
+            Tile { solid: true },
+            Tile { solid: true },
+            Tile { solid: true },
+            Tile { solid: true },
+            Tile { solid: true },
+            Tile { solid: false },
+            Tile { solid: false },
+            Tile { solid: false },
+            Tile { solid: false },
+            Tile { solid: false },
+        ],
+        img.clone(),
+    ));
+    let map = Tilemap::new(
+        Vec2i{x:0,y:0},
+        (20, 20),
+        tileset.clone(),
+        vec![
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            9, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            8, 5, 5, 5, 5, 5, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            2, 2, 2, 2, 2, 2, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+        ],
+    );
+
+    map.draw(&mut fb_state.fb2d);
 
     vk.event_loop.run(move |event, _, control_flow| {
         match event {
@@ -545,34 +587,19 @@ pub fn main() {
 
                 if now_keys[VirtualKeyCode::Up as usize]
                     && !prev_keys[VirtualKeyCode::Up as usize]
-                    && !dash
                 {
                     vy = -5.0;
                 }
 
                 if now_keys[VirtualKeyCode::Down as usize]
-                    && !prev_keys[VirtualKeyCode::Up as usize]
-                    && !dash
                 {
-                    dash = true;
-                    vx = 0.0;
-                    vy = 0.0;
-                    ax = 0.0;
-                    ay = 0.0;
+
                 }
                 if now_keys[VirtualKeyCode::Left as usize] {
-                    if dash {
-                        dash = false;
-                        ay = 0.2;
-                        player.change_color_to(white);
-                        vx = -(dash_count as f32 / 25.0);
-                        dash_count = 0;
+                    if vx > -2.0 {
+                        ax = -0.2;
                     } else {
-                        if vx > -2.0 {
-                            ax = -0.2;
-                        } else {
-                            ax = 0.0
-                        }
+                        ax = 0.0
                     }
                     if !prev_keys[VirtualKeyCode::Left as usize] {
                         if sprite_num > 1 {
@@ -586,18 +613,10 @@ pub fn main() {
                         }
                     }
                 } else if now_keys[VirtualKeyCode::Right as usize] {
-                    if dash {
-                        dash = false;
-                        ay = 0.2;
-                        player.change_color_to(white);
-                        vx = dash_count as f32 / 25.0;
-                        dash_count = 0;
+                    if vx < 2.0 {
+                        ax = 0.2;
                     } else {
-                        if vx < 2.0 {
-                            ax = 0.2;
-                        } else {
-                            ax = 0.0
-                        }
+                        ax = 0.0
                     }
                     if !prev_keys[VirtualKeyCode::Right as usize] {
                         if sprite_num < 6 {
@@ -611,33 +630,51 @@ pub fn main() {
                         }
                     }
                 } else {
-                    if vx > 0.09 {
+                    if vx > 0.1 {
                         ax = -0.1
-                    } else if vx < -0.09 {
+                    } else if vx < -0.1 {
                         ax = 0.1
                     } else {
                         ax = 0.0
                     }
                 }
-                // It's debatable whether the following code should live here or in the drawing section.
-                // First clear the framebuffer...
-                fb_state.fb2d.clear((0, 0, 0, 255));
-                fb_state.fb2d.bitblt(&sprite_sheet_image, from, to);
+                
+                // clear the framebuffer back to the static level
+                map.draw(&mut fb_state.fb2d);
+
+                vx += ax;
+                vy += ay;
+                
+                player.move_by(vx as i32, vy as i32);
+
+                if player.pos.x < 0 { 
+                    player.pos.x = 0 
+                }
+                if player.pos.x > WIDTH as i32 - player.sz.x {
+                    player.pos.x = WIDTH as i32 - player.sz.x
+                }
+                if player.pos.y < 0 {
+                    player.pos.y = 0;
+                }
+                if player.pos.y > HEIGHT as i32 - player.sz.y {
+                    player.pos.y = HEIGHT as i32 - player.sz.y;
+                }
+
+                fb_state.fb2d.draw_rect(&player, (255,255,255,255));
+
+                // fb_state.fb2d.bitblt(&sprite_sheet_image, from, to);
+
                 {
-                    // We need to synchronize here to send new data to the GPU.
-                    // We can't send the new framebuffer until the previous frame is done being drawn.
-                    // Dropping the future will block until it's done.
                     if let Some(mut fut) = vk_state.previous_frame_end.take() {
                         fut.cleanup_finished();
                     }
                 }
-                // Now we can copy into our buffer.
+                
                 {
                     let writable_fb = &mut *fb_state.fb2d_buffer.write().unwrap();
                     writable_fb.copy_from_slice(&fb_state.fb2d.buffer);
                 }
 
-                let swapchain_start = Instant::now();
                 if vk_state.recreate_swapchain {
                     let dimensions: [u32; 2] = vk.surface.window().inner_size().into();
                     let (new_swapchain, new_images) =
@@ -676,10 +713,8 @@ pub fn main() {
                 .unwrap();
 
                 builder
-                    // Now copy that framebuffer buffer into the framebuffer image
                     .copy_buffer_to_image(fb_state.fb2d_buffer.clone(), fb_state.fb2d_image.clone())
                     .unwrap()
-                    // And resume our regularly scheduled programming
                     .begin_render_pass(
                         vk_state.framebuffers[image_num].clone(),
                         SubpassContents::Inline,
