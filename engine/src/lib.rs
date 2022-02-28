@@ -11,13 +11,12 @@
 
 pub mod animations;
 pub mod sprite;
-pub mod types;
 pub mod tiles;
+pub mod types;
 use tiles::{Tile, Tilemap, Tileset};
 
-
 use animations::{Animation, AnimationSet, AnimationState};
-use png;
+// use png;
 use sprite::{Action, Character, Sprite};
 use std::collections::hash_map::HashMap;
 use std::io::Cursor;
@@ -52,8 +51,6 @@ use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
-
-
 const WIDTH: usize = 320;
 const HEIGHT: usize = 320;
 
@@ -61,10 +58,6 @@ const PLAYER_WIDTH: i32 = 20;
 const PLAYER_HEIGHT: i32 = 32;
 
 const TILE_SZ: i32 = 16;
-
-
-#[allow(dead_code)]
-type Animation = (Vec<(usize, usize)>, Vec<f32>, bool);
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
@@ -568,10 +561,17 @@ pub fn main() {
     let mut prev_keys = now_keys.clone();
     let mut now_lmouse = false;
     let mut prev_lmouse = false;
+    let event_loop = EventLoop::new();
 
     let mut player = Rect {
-        pos: Vec2i { x: (WIDTH as i32)/4 - PLAYER_WIDTH/2, y: (HEIGHT as i32) - 48 - PLAYER_HEIGHT },
-        sz: Vec2i { x: PLAYER_WIDTH, y: PLAYER_HEIGHT }
+        pos: Vec2i {
+            x: (WIDTH as i32) / 4 - PLAYER_WIDTH / 2,
+            y: (HEIGHT as i32) - 48 - PLAYER_HEIGHT,
+        },
+        sz: Vec2i {
+            x: PLAYER_WIDTH,
+            y: PLAYER_HEIGHT,
+        },
     };
 
     let mut vx = 0.0;
@@ -582,8 +582,10 @@ pub fn main() {
     // ---------------------------------------------------------------
 
     let mut jumping = false;
-    
-    let img = Rc::new(Image::from_file(std::path::Path::new("content/tilesheet.png")));
+
+    let img = Rc::new(Image::from_file(std::path::Path::new(
+        "content/tilesheet.png",
+    )));
     let tileset = Rc::new(Tileset::new(
         vec![
             Tile { solid: true },
@@ -600,36 +602,30 @@ pub fn main() {
         img.clone(),
     ));
     let map = Tilemap::new(
-        Vec2i{x:0,y:0},
+        Vec2i { x: 0, y: 0 },
         (20, 20),
         tileset.clone(),
         vec![
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            9, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            8, 5, 5, 5, 5, 5, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            2, 2, 2, 2, 2, 2, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 9, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 5, 5, 5, 5, 5, 5, 6,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
         ],
     );
 
     map.draw(&mut fb_state.fb2d);
 
-    vk.event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -727,10 +723,7 @@ pub fn main() {
                     jumping = true;
                 }
 
-                if now_keys[VirtualKeyCode::Down as usize]
-                {
-
-                }
+                if now_keys[VirtualKeyCode::Down as usize] {}
                 if now_keys[VirtualKeyCode::Left as usize] {
                     if vx > -2.0 {
                         ax = -0.2;
@@ -771,14 +764,11 @@ pub fn main() {
                     to,
                 );
 
-             
-                
                 // clear the framebuffer back to the static level
                 map.draw(&mut fb_state.fb2d);
 
                 vx += ax;
                 vy += ay;
-                
                 player.move_by(vx as i32, vy as i32);
 
                 let mut ovs = vec![];
@@ -786,11 +776,11 @@ pub fn main() {
                     for j in 0..3 {
                         let p = Vec2i {
                             x: player.pos.x + i * (player.sz.x / 2),
-                            y: player.pos.y + j * (player.sz.y / 2)
+                            y: player.pos.y + j * (player.sz.y / 2),
                         };
                         let r = map.tile_at(p);
                         if r.1.solid {
-                            let mut ov = Vec2i {x:0,y:0};
+                            let mut ov = Vec2i { x: 0, y: 0 };
                             if vx > 0.0 {
                                 ov.x = r.0.x - (player.pos.x + PLAYER_WIDTH);
                             } else {
@@ -808,7 +798,7 @@ pub fn main() {
                     }
                 }
 
-                let mut disps = Vec2i{x:0,y:0};
+                let mut disps = Vec2i { x: 0, y: 0 };
                 let mut resolved = false;
                 for ov in ovs.iter() {
                     // Touching but not overlapping
@@ -846,8 +836,8 @@ pub fn main() {
                 }
 
                 // check to make sure player is in screen bounds
-                if player.pos.x < 0 { 
-                    player.pos.x = 0 
+                if player.pos.x < 0 {
+                    player.pos.x = 0
                 }
                 if player.pos.x > WIDTH as i32 - player.sz.x {
                     player.pos.x = WIDTH as i32 - player.sz.x
@@ -859,11 +849,9 @@ pub fn main() {
                     player.pos.y = HEIGHT as i32 - player.sz.y;
                 }
 
-                fb_state.fb2d.draw_rect(&player, (255,255,255,255));
+                fb_state.fb2d.draw_rect(&player, (255, 255, 255, 255));
 
-               render3d(&mut vk, &mut vk_state, &fb_state);
-
-                }
+                render3d(&mut vk, &mut vk_state, &fb_state);
             }
             _ => (),
         }
