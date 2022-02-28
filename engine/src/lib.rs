@@ -9,10 +9,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+pub mod animations;
+pub mod sprite;
 pub mod types;
 
+use animations::{Animation, AnimationSet, AnimationState};
 use png;
+use sprite::{Action, Character, Sprite};
+use std::collections::hash_map::HashMap;
 use std::io::Cursor;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 use types::{Color, Image, Rect, Vec2i};
@@ -44,13 +50,10 @@ use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
-const WIDTH: usize = 320;
-const HEIGHT: usize = 320;
-const SPRITE_RECT_WIDTH: usize = 165;
-const SPRITE_RECT_HEIGHT: usize = 320;
-
-#[allow(dead_code)]
-type Animation = (Vec<(usize, usize)>, Vec<f32>, bool);
+const WIDTH: usize = 700;
+const HEIGHT: usize = 700;
+const SPRITE_RECT_WIDTH: usize = 443;
+const SPRITE_RECT_HEIGHT: usize = 401;
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
@@ -340,6 +343,203 @@ impl FBState {
     }
 }
 
+struct GameState {
+    sprite: Sprite,
+    animation_set: AnimationSet,
+    speedup_factor: usize,
+}
+
+impl GameState {
+    pub fn new() -> Self {
+        let mut animation_set: AnimationSet = AnimationSet {
+            character: Character::Cat,
+            image: Image::from_file(std::path::Path::new("../engine/cat-spritesheet.png")),
+            animations: HashMap::new(),
+        };
+        animation_set.animations.insert(
+            Action::Walk,
+            Rc::new(Animation {
+                frames: vec![
+                    Rect {
+                        pos: Vec2i { x: 2273, y: 3882 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 2803, y: 3882 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32 as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 3343, y: 3882 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 3883, y: 3882 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                ],
+                frame_timings: vec![0, 10, 20, 30],
+                loops: true,
+            }),
+        );
+        animation_set.animations.insert(
+            Action::Jump,
+            Rc::new(Animation {
+                frames: vec![
+                    Rect {
+                        pos: Vec2i { x: 1187, y: 2431 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 1717, y: 2431 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 1710, y: 2431 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 2220, y: 2431 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 2770, y: 2431 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 3310, y: 2431 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 3850, y: 2431 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                ],
+                frame_timings: vec![0, 10, 20, 30, 40],
+                loops: true,
+            }),
+        );
+        animation_set.animations.insert(
+            Action::Die,
+            Rc::new(Animation {
+                frames: vec![
+                    Rect {
+                        pos: Vec2i { x: 3962, y: 70 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 542, y: 70 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 1142, y: 70 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 1742, y: 70 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 2332, y: 70 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 2902, y: 70 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 3462, y: 70 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32 as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                    Rect {
+                        pos: Vec2i { x: 104, y: 70 },
+                        sz: Vec2i {
+                            x: SPRITE_RECT_WIDTH as i32,
+                            y: SPRITE_RECT_HEIGHT as i32,
+                        },
+                    },
+                ],
+                frame_timings: vec![0, 10, 20, 30, 40, 50, 60, 70, 80],
+                loops: true,
+            }),
+        );
+        let sprite = Sprite {
+            character: Character::Cat,
+            action: Action::Walk,
+            animation_state: animation_set.play_animation(Action::Walk),
+            shape: Rect {
+                pos: Vec2i { x: 20, y: 20 },
+                sz: Vec2i {
+                    x: SPRITE_RECT_WIDTH as i32,
+                    y: SPRITE_RECT_HEIGHT as i32,
+                },
+            },
+        };
+        // find a way to let one animation run and stop. - DONE
+        // find a way to do different animations. - DONE
+        // figure out what the scale factor is supposed to do. - DONE
+        let speedup_factor = 5; // this acts more like a slow down factor.
+
+        GameState {
+            sprite: sprite,
+            animation_set: animation_set,
+            speedup_factor: speedup_factor,
+        }
+    }
+}
 #[derive(Copy, Clone)]
 struct Rect2 {
     x: usize,
@@ -403,33 +603,125 @@ impl Rect2 {
     }
 }
 
+fn render3d(vk: &mut Vk, vk_state: &mut VkState, fb_state: &FBState) {
+    {
+        // We need to synchronize here to send new data to the GPU.
+        // We can't send the new framebuffer until the previous frame is done being drawn.
+        // Dropping the future will block until it's done.
+        if let Some(mut fut) = vk_state.previous_frame_end.take() {
+            fut.cleanup_finished();
+        }
+    }
+    // Now we can copy into our buffer.
+    {
+        let writable_fb = &mut *fb_state.fb2d_buffer.write().unwrap();
+        writable_fb.copy_from_slice(&fb_state.fb2d.buffer);
+    }
+
+    if vk_state.recreate_swapchain {
+        let dimensions: [u32; 2] = vk.surface.window().inner_size().into();
+        let (new_swapchain, new_images) =
+            match vk.swapchain.recreate().dimensions(dimensions).build() {
+                Ok(r) => r,
+                Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+            };
+
+        vk.swapchain = new_swapchain;
+        vk_state.framebuffers = window_size_dependent_setup(
+            &new_images,
+            vk_state.render_pass.clone(),
+            &mut vk_state.viewport,
+        );
+        vk_state.recreate_swapchain = false;
+    }
+    let (image_num, suboptimal, acquire_future) =
+        match swapchain::acquire_next_image(vk.swapchain.clone(), None) {
+            Ok(r) => r,
+            Err(AcquireError::OutOfDate) => {
+                vk_state.recreate_swapchain = true;
+                return;
+            }
+            Err(e) => panic!("Failed to acquire next image: {:?}", e),
+        };
+    if suboptimal {
+        vk_state.recreate_swapchain = true;
+    }
+
+    let mut builder = AutoCommandBufferBuilder::primary(
+        vk.device.clone(),
+        vk.queue.family(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
+
+    builder
+        // Now copy that framebuffer buffer into the framebuffer image
+        .copy_buffer_to_image(fb_state.fb2d_buffer.clone(), fb_state.fb2d_image.clone())
+        .unwrap()
+        // And resume our regularly scheduled programming
+        .begin_render_pass(
+            vk_state.framebuffers[image_num].clone(),
+            SubpassContents::Inline,
+            std::iter::once(vulkano::format::ClearValue::None),
+        )
+        .unwrap()
+        .set_viewport(0, [vk_state.viewport.clone()])
+        .bind_pipeline_graphics(fb_state.pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Graphics,
+            fb_state.pipeline.layout().clone(),
+            0,
+            fb_state.set.clone(),
+        )
+        .bind_vertex_buffers(0, fb_state.vertex_buffer.clone())
+        .draw(fb_state.vertex_buffer.len() as u32, 1, 0, 0)
+        .unwrap()
+        .end_render_pass()
+        .unwrap();
+
+    let command_buffer = builder.build().unwrap();
+
+    let future = acquire_future
+        .then_execute(vk.queue.clone(), command_buffer)
+        .unwrap()
+        .then_swapchain_present(vk.queue.clone(), vk.swapchain.clone(), image_num)
+        .then_signal_fence_and_flush();
+
+    match future {
+        Ok(future) => {
+            vk_state.previous_frame_end = Some(future.boxed());
+        }
+        Err(FlushError::OutOfDate) => {
+            vk_state.recreate_swapchain = true;
+            vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
+        }
+        Err(e) => {
+            println!("Failed to flush future: {:?}", e);
+            vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
+        }
+    }
+}
+
 pub fn main() {
     let mut vk = Vk::new();
     let mut vk_state = VkState::new(&vk);
+    let event_loop = EventLoop::new();
+    let mut game_state = GameState::new();
 
-    let mut fb2d = Image {
+    // ---------------------------------------------------------------------------------
+    // Beginning of Game Stuff
+    let fb2d = Image {
         buffer: vec![(0, 0, 0, 255); (HEIGHT * WIDTH) as usize].into_boxed_slice(),
         sz: Vec2i {
             x: WIDTH as i32,
             y: HEIGHT as i32,
         },
     };
-
-    let mut sprite_num = 1;
-    let mut from = Rect {
-        pos: Vec2i { x: 0, y: 0 },
-        sz: Vec2i {
-            x: SPRITE_RECT_WIDTH as i32,
-            y: SPRITE_RECT_HEIGHT as i32,
-        },
-    };
     let mut to = Vec2i { x: 0, y: 0 };
-    let sprite_sheet_image = Image::from_file(std::path::Path::new("../engine/spritesheet.png"));
     let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
-
     let mut now_keys = [false; 255];
     let mut prev_keys = now_keys.clone();
-
     let mut now_lmouse = false;
     let mut prev_lmouse = false;
     let white = (255, 255, 255, 255);
@@ -452,8 +744,9 @@ pub fn main() {
     let mut vy = 0.0;
     let mut ax = 0.0;
     let mut ay = 0.2;
-
-    vk.event_loop.run(move |event, _, control_flow| {
+    // End of Game stuff
+    // ---------------------------------------------------------------
+    event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -543,11 +836,18 @@ pub fn main() {
                 } else {
                 }
 
-                if now_keys[VirtualKeyCode::Up as usize]
-                    && !prev_keys[VirtualKeyCode::Up as usize]
-                    && !dash
+                if now_keys[VirtualKeyCode::Up as usize] && !prev_keys[VirtualKeyCode::Up as usize]
                 {
                     vy = -5.0;
+                    game_state.speedup_factor += 1;
+                }
+                if now_keys[VirtualKeyCode::Down as usize]
+                    && !prev_keys[VirtualKeyCode::Down as usize]
+                {
+                    vy = -5.0;
+                    if game_state.speedup_factor != 1 {
+                        game_state.speedup_factor -= 1;
+                    }
                 }
 
                 if now_keys[VirtualKeyCode::Down as usize]
@@ -574,17 +874,8 @@ pub fn main() {
                             ax = 0.0
                         }
                     }
-                    if !prev_keys[VirtualKeyCode::Left as usize] {
-                        if sprite_num > 1 {
-                            sprite_num -= 1;
-                            let new_x_pos = (from.pos.x / sprite_num) % WIDTH as i32;
-                            from = Rect {
-                                pos: Vec2i { x: new_x_pos, y: 0 },
-                                sz: Vec2i { x: 165, y: 320 },
-                            };
-                            to = Vec2i { x: new_x_pos, y: 0 };
-                        }
-                    }
+
+                    if !prev_keys[VirtualKeyCode::Left as usize] {}
                 } else if now_keys[VirtualKeyCode::Right as usize] {
                     if dash {
                         dash = false;
@@ -600,15 +891,12 @@ pub fn main() {
                         }
                     }
                     if !prev_keys[VirtualKeyCode::Right as usize] {
-                        if sprite_num < 6 {
-                            let new_x_pos = (SPRITE_RECT_WIDTH as i32 * sprite_num) % WIDTH as i32;
-                            sprite_num += 1;
-                            from = Rect {
-                                pos: Vec2i { x: new_x_pos, y: 0 },
-                                sz: Vec2i { x: 165, y: 320 },
-                            };
-                            to = Vec2i { x: new_x_pos, y: 0 };
-                        }
+                        game_state.sprite.turn_action();
+                        game_state.sprite.set_animation(
+                            game_state
+                                .animation_set
+                                .play_animation(game_state.sprite.action),
+                        );
                     }
                 } else {
                     if vx > 0.09 {
@@ -622,105 +910,13 @@ pub fn main() {
                 // It's debatable whether the following code should live here or in the drawing section.
                 // First clear the framebuffer...
                 fb_state.fb2d.clear((0, 0, 0, 255));
-                fb_state.fb2d.bitblt(&sprite_sheet_image, from, to);
-                {
-                    // We need to synchronize here to send new data to the GPU.
-                    // We can't send the new framebuffer until the previous frame is done being drawn.
-                    // Dropping the future will block until it's done.
-                    if let Some(mut fut) = vk_state.previous_frame_end.take() {
-                        fut.cleanup_finished();
-                    }
-                }
-                // Now we can copy into our buffer.
-                {
-                    let writable_fb = &mut *fb_state.fb2d_buffer.write().unwrap();
-                    writable_fb.copy_from_slice(&fb_state.fb2d.buffer);
-                }
+                fb_state.fb2d.bitblt(
+                    game_state.animation_set.get_image(),
+                    game_state.sprite.play_animation(&game_state.speedup_factor),
+                    to,
+                );
 
-                let swapchain_start = Instant::now();
-                if vk_state.recreate_swapchain {
-                    let dimensions: [u32; 2] = vk.surface.window().inner_size().into();
-                    let (new_swapchain, new_images) =
-                        match vk.swapchain.recreate().dimensions(dimensions).build() {
-                            Ok(r) => r,
-                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                        };
-
-                    vk.swapchain = new_swapchain;
-                    vk_state.framebuffers = window_size_dependent_setup(
-                        &new_images,
-                        vk_state.render_pass.clone(),
-                        &mut vk_state.viewport,
-                    );
-                    vk_state.recreate_swapchain = false;
-                }
-                let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(vk.swapchain.clone(), None) {
-                        Ok(r) => r,
-                        Err(AcquireError::OutOfDate) => {
-                            vk_state.recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
-                    };
-                if suboptimal {
-                    vk_state.recreate_swapchain = true;
-                }
-
-                let mut builder = AutoCommandBufferBuilder::primary(
-                    vk.device.clone(),
-                    vk.queue.family(),
-                    CommandBufferUsage::OneTimeSubmit,
-                )
-                .unwrap();
-
-                builder
-                    // Now copy that framebuffer buffer into the framebuffer image
-                    .copy_buffer_to_image(fb_state.fb2d_buffer.clone(), fb_state.fb2d_image.clone())
-                    .unwrap()
-                    // And resume our regularly scheduled programming
-                    .begin_render_pass(
-                        vk_state.framebuffers[image_num].clone(),
-                        SubpassContents::Inline,
-                        std::iter::once(vulkano::format::ClearValue::None),
-                    )
-                    .unwrap()
-                    .set_viewport(0, [vk_state.viewport.clone()])
-                    .bind_pipeline_graphics(fb_state.pipeline.clone())
-                    .bind_descriptor_sets(
-                        PipelineBindPoint::Graphics,
-                        fb_state.pipeline.layout().clone(),
-                        0,
-                        fb_state.set.clone(),
-                    )
-                    .bind_vertex_buffers(0, fb_state.vertex_buffer.clone())
-                    .draw(fb_state.vertex_buffer.len() as u32, 1, 0, 0)
-                    .unwrap()
-                    .end_render_pass()
-                    .unwrap();
-
-                let command_buffer = builder.build().unwrap();
-
-                let future = acquire_future
-                    .then_execute(vk.queue.clone(), command_buffer)
-                    .unwrap()
-                    .then_swapchain_present(vk.queue.clone(), vk.swapchain.clone(), image_num)
-                    .then_signal_fence_and_flush();
-
-                match future {
-                    Ok(future) => {
-                        vk_state.previous_frame_end = Some(future.boxed());
-                    }
-                    Err(FlushError::OutOfDate) => {
-                        vk_state.recreate_swapchain = true;
-                        vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
-                    }
-                    Err(e) => {
-                        println!("Failed to flush future: {:?}", e);
-                        vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
-                    }
-                }
+                render3d(&mut vk, &mut vk_state, &fb_state);
             }
             _ => (),
         }
@@ -747,3 +943,7 @@ fn window_size_dependent_setup(
         })
         .collect::<Vec<_>>()
 }
+
+// fn get_animation_state(animation_states: &Vec<AnimationState>, index: usize) -> AnimationState {
+//     animation_states[index].clone()
+// }
