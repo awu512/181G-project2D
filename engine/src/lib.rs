@@ -757,15 +757,14 @@ pub fn main() {
                 }
                 // It's debatable whether the following code should live here or in the drawing section.
                 // First clear the framebuffer...
-                fb_state.fb2d.clear((0, 0, 0, 255));
-                fb_state.fb2d.bitblt(
-                    game_state.animation_set.get_image(),
-                    game_state.sprite.play_animation(&game_state.speedup_factor),
-                    to,
-                );
 
                 // clear the framebuffer back to the static level
                 map.draw(&mut fb_state.fb2d);
+                fb_state.fb2d.bitblt(
+                    game_state.animation_set.get_image(),
+                    game_state.sprite.play_animation(&game_state.speedup_factor),
+                    player.pos,
+                );
 
                 vx += ax;
                 vy += ay;
@@ -848,8 +847,6 @@ pub fn main() {
                 if player.pos.y > HEIGHT as i32 - player.sz.y {
                     player.pos.y = HEIGHT as i32 - player.sz.y;
                 }
-
-                fb_state.fb2d.draw_rect(&player, (255, 255, 255, 255));
 
                 render3d(&mut vk, &mut vk_state, &fb_state);
             }
