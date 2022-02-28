@@ -12,6 +12,9 @@
 pub mod animations;
 pub mod sprite;
 pub mod types;
+pub mod tiles;
+use tiles::{Tile, Tilemap, Tileset};
+
 
 use animations::{Animation, AnimationSet, AnimationState};
 use png;
@@ -20,7 +23,6 @@ use std::collections::hash_map::HashMap;
 use std::io::Cursor;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Instant;
 use types::{Color, Image, Rect, Vec2i};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
@@ -50,10 +52,20 @@ use winit::event::{Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
-const WIDTH: usize = 700;
-const HEIGHT: usize = 700;
+
 const SPRITE_RECT_WIDTH: usize = 443;
 const SPRITE_RECT_HEIGHT: usize = 401;
+const WIDTH: usize = 320;
+const HEIGHT: usize = 320;
+
+const PLAYER_WIDTH: i32 = 20;
+const PLAYER_HEIGHT: i32 = 32;
+
+const TILE_SZ: i32 = 16;
+
+
+#[allow(dead_code)]
+type Animation = (Vec<(usize, usize)>, Vec<f32>, bool);
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
@@ -719,26 +731,17 @@ pub fn main() {
         },
     };
     let mut to = Vec2i { x: 0, y: 0 };
+
     let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
     let mut now_keys = [false; 255];
     let mut prev_keys = now_keys.clone();
     let mut now_lmouse = false;
     let mut prev_lmouse = false;
-    let white = (255, 255, 255, 255);
 
-    let w = 5_usize;
-    let h = 10_usize;
-
-    let mut player = Rect2 {
-        x: WIDTH / 2 - w / 2,
-        y: HEIGHT - h,
-        width: w,
-        height: h,
-        color: white,
+    let mut player = Rect {
+        pos: Vec2i { x: (WIDTH as i32)/4 - PLAYER_WIDTH/2, y: (HEIGHT as i32) - 48 - PLAYER_HEIGHT },
+        sz: Vec2i { x: PLAYER_WIDTH, y: PLAYER_HEIGHT }
     };
-
-    let mut dash = false;
-    let mut dash_count = 0_u8;
 
     let mut vx = 0.0;
     let mut vy = 0.0;
@@ -746,7 +749,56 @@ pub fn main() {
     let mut ay = 0.2;
     // End of Game stuff
     // ---------------------------------------------------------------
-    event_loop.run(move |event, _, control_flow| {
+
+    let mut jumping = false;
+    
+    let img = Rc::new(Image::from_file(std::path::Path::new("content/tilesheet.png")));
+    let tileset = Rc::new(Tileset::new(
+        vec![
+            Tile { solid: true },
+            Tile { solid: true },
+            Tile { solid: true },
+            Tile { solid: true },
+            Tile { solid: true },
+            Tile { solid: false },
+            Tile { solid: false },
+            Tile { solid: false },
+            Tile { solid: false },
+            Tile { solid: false },
+        ],
+        img.clone(),
+    ));
+    let map = Tilemap::new(
+        Vec2i{x:0,y:0},
+        (20, 20),
+        tileset.clone(),
+        vec![
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            9, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            8, 5, 5, 5, 5, 5, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            2, 2, 2, 2, 2, 2, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+        ],
+    );
+
+    map.draw(&mut fb_state.fb2d);
+
+    vk.event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -836,59 +888,31 @@ pub fn main() {
                 } else {
                 }
 
-                if now_keys[VirtualKeyCode::Up as usize] && !prev_keys[VirtualKeyCode::Up as usize]
+                if now_keys[VirtualKeyCode::Up as usize]
+                    && !prev_keys[VirtualKeyCode::Up as usize]
+                    && !jumping
                 {
                     vy = -5.0;
-                    game_state.speedup_factor += 1;
-                }
-                if now_keys[VirtualKeyCode::Down as usize]
-                    && !prev_keys[VirtualKeyCode::Down as usize]
-                {
-                    vy = -5.0;
-                    if game_state.speedup_factor != 1 {
-                        game_state.speedup_factor -= 1;
-                    }
+                    jumping = true;
                 }
 
                 if now_keys[VirtualKeyCode::Down as usize]
-                    && !prev_keys[VirtualKeyCode::Up as usize]
-                    && !dash
                 {
-                    dash = true;
-                    vx = 0.0;
-                    vy = 0.0;
-                    ax = 0.0;
-                    ay = 0.0;
+
                 }
                 if now_keys[VirtualKeyCode::Left as usize] {
-                    if dash {
-                        dash = false;
-                        ay = 0.2;
-                        player.change_color_to(white);
-                        vx = -(dash_count as f32 / 25.0);
-                        dash_count = 0;
+                    if vx > -2.0 {
+                        ax = -0.2;
                     } else {
-                        if vx > -2.0 {
-                            ax = -0.2;
-                        } else {
-                            ax = 0.0
-                        }
+                        ax = 0.0
                     }
 
                     if !prev_keys[VirtualKeyCode::Left as usize] {}
                 } else if now_keys[VirtualKeyCode::Right as usize] {
-                    if dash {
-                        dash = false;
-                        ay = 0.2;
-                        player.change_color_to(white);
-                        vx = dash_count as f32 / 25.0;
-                        dash_count = 0;
+                    if vx < 2.0 {
+                        ax = 0.2;
                     } else {
-                        if vx < 2.0 {
-                            ax = 0.2;
-                        } else {
-                            ax = 0.0
-                        }
+                        ax = 0.0
                     }
                     if !prev_keys[VirtualKeyCode::Right as usize] {
                         game_state.sprite.turn_action();
@@ -899,9 +923,9 @@ pub fn main() {
                         );
                     }
                 } else {
-                    if vx > 0.09 {
+                    if vx > 0.1 {
                         ax = -0.1
-                    } else if vx < -0.09 {
+                    } else if vx < -0.1 {
                         ax = 0.1
                     } else {
                         ax = 0.0
@@ -916,7 +940,99 @@ pub fn main() {
                     to,
                 );
 
-                render3d(&mut vk, &mut vk_state, &fb_state);
+             
+                
+                // clear the framebuffer back to the static level
+                map.draw(&mut fb_state.fb2d);
+
+                vx += ax;
+                vy += ay;
+                
+                player.move_by(vx as i32, vy as i32);
+
+                let mut ovs = vec![];
+                for i in 0..3 {
+                    for j in 0..3 {
+                        let p = Vec2i {
+                            x: player.pos.x + i * (player.sz.x / 2),
+                            y: player.pos.y + j * (player.sz.y / 2)
+                        };
+                        let r = map.tile_at(p);
+                        if r.1.solid {
+                            let mut ov = Vec2i {x:0,y:0};
+                            if vx > 0.0 {
+                                ov.x = r.0.x - (player.pos.x + PLAYER_WIDTH);
+                            } else {
+                                ov.x = (r.0.x + TILE_SZ) - player.pos.x;
+                            }
+
+                            if vy > 0.0 {
+                                ov.y = r.0.y - (player.pos.y + PLAYER_HEIGHT);
+                            } else {
+                                ov.y = (r.0.y + TILE_SZ) - player.pos.y;
+                            }
+
+                            ovs.push(ov);
+                        }
+                    }
+                }
+
+                let mut disps = Vec2i{x:0,y:0};
+                let mut resolved = false;
+                for ov in ovs.iter() {
+                    // Touching but not overlapping
+                    if ov.x == 0 && ov.y == 0 {
+                        resolved = true;
+                        // Maybe track "I'm touching it on this side or that side"
+                        break;
+                    }
+                    // Is this more of a horizontal collision... (and we are allowed to displace horizontally)
+                    if ov.x.abs() <= ov.y.abs() && ov.x.signum() != -disps.x.signum() {
+                        // Record that we moved by o.x, to avoid contradictory moves later
+                        disps.x += ov.x;
+                        // Actually move player pos
+                        player.pos.x += ov.x;
+                        vx = 0.0;
+                        // Mark collision for the player as resolved.
+                        resolved = true;
+                        break;
+                        // or is it more of a vertical collision (and we are allowed to displace vertically)
+                    } else if ov.y.abs() <= ov.x.abs() && ov.y.signum() != -disps.y.signum() {
+                        disps.y += ov.y;
+                        player.pos.y += ov.y;
+                        vy = 0.0;
+                        jumping = false;
+                        resolved = true;
+                        break;
+                    } else {
+                        // otherwise, we can't actually handle this displacement because we had a contradictory
+                        // displacement earlier in the frame.
+                    }
+                }
+                // Couldn't resolve collision, player must be squashed or trapped (e.g. by a moving platform)
+                if !resolved {
+                    // In your game, this might mean killing the player character or moving them somewhere else
+                }
+
+                // check to make sure player is in screen bounds
+                if player.pos.x < 0 { 
+                    player.pos.x = 0 
+                }
+                if player.pos.x > WIDTH as i32 - player.sz.x {
+                    player.pos.x = WIDTH as i32 - player.sz.x
+                }
+                if player.pos.y < 0 {
+                    player.pos.y = 0;
+                }
+                if player.pos.y > HEIGHT as i32 - player.sz.y {
+                    player.pos.y = HEIGHT as i32 - player.sz.y;
+                }
+
+                fb_state.fb2d.draw_rect(&player, (255,255,255,255));
+
+               render3d(&mut vk, &mut vk_state, &fb_state);
+
+                }
             }
             _ => (),
         }
