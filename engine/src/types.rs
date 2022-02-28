@@ -34,6 +34,10 @@ impl Rect {
         self.pos.x += dx;
         self.pos.y += dy;
     }
+
+    pub fn bottom(&self) -> i32 {
+        self.pos.y + self.sz.y
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Hash, Debug)]
@@ -53,29 +57,18 @@ impl Image {
         &self.buffer
     }
     pub fn from_file(p: &std::path::Path) -> Self {
-        use std::fs::File;
-        let decoder = png::Decoder::new(File::open(p).unwrap());
-        let mut reader = decoder.read_info().unwrap();
-        
-        let mut buf = vec![0; reader.output_buffer_size()];
-        
-        let info = reader.next_frame(&mut buf).unwrap();
-        assert_eq!(info.color_type, png::ColorType::Rgba);
+        let img = image_reading::open(p).unwrap().into_rgba8();
+        let sz = Vec2i{x:img.width() as i32, y:img.height() as i32};
+        let img = img.into_vec();
         Self {
-            buffer: buf
-                .chunks_exact(4)
-                .map(|px| {
-                    let a = px[3] as f32 / 255.0;
-                    let r = (px[0] as f32 * a) as u8;
-                    let g = (px[1] as f32 * a) as u8;
-                    let b = (px[2] as f32 * a) as u8;
-                    (r, g, b, a as u8) // Color
-                })
-                .collect::<Box<[Color]>>(),
-            sz: Vec2i {
-                x: info.width as i32,
-                y: info.height as i32,
-            },
+            buffer:img.chunks_exact(4).map(|px| {
+                let a = px[3] as f32 / 255.0;
+                let r = (px[0] as f32 * a) as u8;
+                let g = (px[1] as f32 * a) as u8;
+                let b = (px[2] as f32 * a) as u8;
+                (r,g,b,(a * 255.0) as u8)
+            }).collect(),
+            sz
         }
     }
 

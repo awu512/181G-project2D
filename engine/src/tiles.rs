@@ -87,18 +87,7 @@ impl Tilemap {
         // Translate into map coordinates
         let x = (x - self.position.x) / TILE_SZ as i32;
         let y = (y - self.position.y) / TILE_SZ as i32;
-        assert!(
-            x >= 0 && x < self.dims.0 as i32,
-            "Tile X coordinate {} out of bounds {}",
-            x,
-            self.dims.0
-        );
-        assert!(
-            y >= 0 && y < self.dims.1 as i32,
-            "Tile Y coordinate {} out of bounds {}",
-            y,
-            self.dims.1
-        );
+        
         // return the tile corner and the tile ID
         (
             Vec2i {

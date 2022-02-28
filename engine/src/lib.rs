@@ -11,13 +11,10 @@
 
 pub mod types;
 pub mod tiles;
-use tiles::{Tile, TileID, Tilemap, Tileset};
+use tiles::{Tile, Tilemap, Tileset};
 
-use png;
-use std::io::Cursor;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Instant;
 use types::{Color, Image, Rect, Vec2i};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
@@ -49,6 +46,12 @@ use winit::window::{Window, WindowBuilder};
 
 const WIDTH: usize = 320;
 const HEIGHT: usize = 320;
+
+const PLAYER_WIDTH: i32 = 20;
+const PLAYER_HEIGHT: i32 = 32;
+
+const TILE_SZ: i32 = 16;
+
 const SPRITE_RECT_WIDTH: usize = 165;
 const SPRITE_RECT_HEIGHT: usize = 320;
 
@@ -343,69 +346,6 @@ impl FBState {
     }
 }
 
-#[derive(Copy, Clone)]
-struct Rect2 {
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    color: Color,
-}
-
-impl Rect2 {
-    fn change_color_to(&mut self, new: Color) {
-        self.color = new;
-    }
-
-    #[allow(dead_code)]
-    fn left(self) -> usize {
-        self.x
-    }
-
-    #[allow(dead_code)]
-    fn right(self) -> usize {
-        self.x + self.width
-    }
-
-    #[allow(dead_code)]
-    fn top(self) -> usize {
-        self.y
-    }
-
-    #[allow(dead_code)]
-    fn bottom(self) -> usize {
-        self.y + self.height
-    }
-
-    #[allow(dead_code)]
-    fn change_x_by(&mut self, change: f32) {
-        let mut x = self.x as f32;
-        x = x + change;
-
-        if x < 0.0 {
-            self.x = 0;
-        } else if x as usize + self.width > WIDTH {
-            self.x = WIDTH - self.width;
-        } else {
-            self.x = x as usize;
-        }
-    }
-
-    #[allow(dead_code)]
-    fn change_y_by(&mut self, change: f32) {
-        let mut y = self.y as f32;
-        y = y + change;
-
-        if y < 0.0 {
-            self.y = 0;
-        } else if y as usize + self.height > HEIGHT {
-            self.y = HEIGHT - self.height;
-        } else {
-            self.y = y as usize;
-        }
-    }
-}
-
 pub fn main() {
     let mut vk = Vk::new();
     let mut vk_state = VkState::new(&vk);
@@ -427,7 +367,7 @@ pub fn main() {
         },
     };
     let mut to = Vec2i { x: 0, y: 0 };
-    let sprite_sheet_image = Image::from_file(std::path::Path::new("../engine/content/spritesheet.png"));
+    let sprite_sheet_image = Image::from_file(std::path::Path::new("../hoophorse/content/spritesheet.png"));
     let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
 
     let mut now_keys = [false; 255];
@@ -436,18 +376,17 @@ pub fn main() {
     let mut now_lmouse = false;
     let mut prev_lmouse = false;
 
-    let w = 16;
-    let h = 32;
-
     let mut player = Rect {
-        pos: Vec2i { x: (WIDTH as i32)/2 - w/2, y: (HEIGHT as i32) - 48 },
-        sz: Vec2i { x: w, y: h }
+        pos: Vec2i { x: (WIDTH as i32)/4 - PLAYER_WIDTH/2, y: (HEIGHT as i32) - 48 - PLAYER_HEIGHT },
+        sz: Vec2i { x: PLAYER_WIDTH, y: PLAYER_HEIGHT }
     };
 
     let mut vx = 0.0;
     let mut vy = 0.0;
     let mut ax = 0.0;
     let ay = 0.2;
+
+    let mut jumping = false;
     
     let img = Rc::new(Image::from_file(std::path::Path::new("content/tilesheet.png")));
     let tileset = Rc::new(Tileset::new(
@@ -587,8 +526,10 @@ pub fn main() {
 
                 if now_keys[VirtualKeyCode::Up as usize]
                     && !prev_keys[VirtualKeyCode::Up as usize]
+                    && !jumping
                 {
                     vy = -5.0;
+                    jumping = true;
                 }
 
                 if now_keys[VirtualKeyCode::Down as usize]
@@ -647,6 +588,71 @@ pub fn main() {
                 
                 player.move_by(vx as i32, vy as i32);
 
+                let mut ovs = vec![];
+                for i in 0..3 {
+                    for j in 0..3 {
+                        let p = Vec2i {
+                            x: player.pos.x + i * (player.sz.x / 2),
+                            y: player.pos.y + j * (player.sz.y / 2)
+                        };
+                        let r = map.tile_at(p);
+                        if r.1.solid {
+                            let mut ov = Vec2i {x:0,y:0};
+                            if vx > 0.0 {
+                                ov.x = r.0.x - (player.pos.x + PLAYER_WIDTH);
+                            } else {
+                                ov.x = (r.0.x + TILE_SZ) - player.pos.x;
+                            }
+
+                            if vy > 0.0 {
+                                ov.y = r.0.y - (player.pos.y + PLAYER_HEIGHT);
+                            } else {
+                                ov.y = (r.0.y + TILE_SZ) - player.pos.y;
+                            }
+
+                            ovs.push(ov);
+                        }
+                    }
+                }
+
+                let mut disps = Vec2i{x:0,y:0};
+                let mut resolved = false;
+                for ov in ovs.iter() {
+                    // Touching but not overlapping
+                    if ov.x == 0 && ov.y == 0 {
+                        resolved = true;
+                        // Maybe track "I'm touching it on this side or that side"
+                        break;
+                    }
+                    // Is this more of a horizontal collision... (and we are allowed to displace horizontally)
+                    if ov.x.abs() <= ov.y.abs() && ov.x.signum() != -disps.x.signum() {
+                        // Record that we moved by o.x, to avoid contradictory moves later
+                        disps.x += ov.x;
+                        // Actually move player pos
+                        player.pos.x += ov.x;
+                        vx = 0.0;
+                        // Mark collision for the player as resolved.
+                        resolved = true;
+                        break;
+                        // or is it more of a vertical collision (and we are allowed to displace vertically)
+                    } else if ov.y.abs() <= ov.x.abs() && ov.y.signum() != -disps.y.signum() {
+                        disps.y += ov.y;
+                        player.pos.y += ov.y;
+                        vy = 0.0;
+                        jumping = false;
+                        resolved = true;
+                        break;
+                    } else {
+                        // otherwise, we can't actually handle this displacement because we had a contradictory
+                        // displacement earlier in the frame.
+                    }
+                }
+                // Couldn't resolve collision, player must be squashed or trapped (e.g. by a moving platform)
+                if !resolved {
+                    // In your game, this might mean killing the player character or moving them somewhere else
+                }
+
+                // check to make sure player is in screen bounds
                 if player.pos.x < 0 { 
                     player.pos.x = 0 
                 }
