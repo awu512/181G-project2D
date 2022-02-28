@@ -9,10 +9,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub mod types;
+pub mod animations;
+pub mod sprite;
 pub mod tiles;
+pub mod types;
 use tiles::{Tile, Tilemap, Tileset};
 
+use animations::{Animation, AnimationSet, AnimationState};
+// use png;
+use sprite::{Action, Character, Sprite};
+use std::collections::hash_map::HashMap;
+use std::io::Cursor;
 use std::rc::Rc;
 use std::sync::Arc;
 use types::{Color, Image, Rect, Vec2i};
@@ -51,12 +58,6 @@ const PLAYER_WIDTH: i32 = 20;
 const PLAYER_HEIGHT: i32 = 32;
 
 const TILE_SZ: i32 = 16;
-
-const SPRITE_RECT_WIDTH: usize = 165;
-const SPRITE_RECT_HEIGHT: usize = 320;
-
-#[allow(dead_code)]
-type Animation = (Vec<(usize, usize)>, Vec<f32>, bool);
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
@@ -346,49 +347,245 @@ impl FBState {
     }
 }
 
+struct GameState {
+    sprite: Sprite,
+    animation_set: AnimationSet,
+    speedup_factor: usize,
+}
+
+impl GameState {
+    pub fn new(character: Character) -> Self {
+        let animation_set = AnimationSet::new(character);
+        let sprite = Sprite {
+            character: character,
+            action: Action::Walk,
+            animation_state: animation_set.play_animation(Action::Walk),
+            shape: Rect {
+                pos: Vec2i { x: 20, y: 20 },
+                sz: Vec2i {
+                    x: PLAYER_WIDTH as i32,
+                    y: PLAYER_HEIGHT as i32,
+                },
+            },
+        };
+        let speedup_factor = 5; // this acts more like a slow down factor.
+        GameState {
+            sprite: sprite,
+            animation_set: animation_set,
+            speedup_factor: speedup_factor,
+        }
+    }
+}
+#[derive(Copy, Clone)]
+struct Rect2 {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    color: Color,
+}
+
+impl Rect2 {
+    fn change_color_to(&mut self, new: Color) {
+        self.color = new;
+    }
+
+    #[allow(dead_code)]
+    fn left(self) -> usize {
+        self.x
+    }
+
+    #[allow(dead_code)]
+    fn right(self) -> usize {
+        self.x + self.width
+    }
+
+    #[allow(dead_code)]
+    fn top(self) -> usize {
+        self.y
+    }
+
+    #[allow(dead_code)]
+    fn bottom(self) -> usize {
+        self.y + self.height
+    }
+
+    #[allow(dead_code)]
+    fn change_x_by(&mut self, change: f32) {
+        let mut x = self.x as f32;
+        x = x + change;
+
+        if x < 0.0 {
+            self.x = 0;
+        } else if x as usize + self.width > WIDTH {
+            self.x = WIDTH - self.width;
+        } else {
+            self.x = x as usize;
+        }
+    }
+
+    #[allow(dead_code)]
+    fn change_y_by(&mut self, change: f32) {
+        let mut y = self.y as f32;
+        y = y + change;
+
+        if y < 0.0 {
+            self.y = 0;
+        } else if y as usize + self.height > HEIGHT {
+            self.y = HEIGHT - self.height;
+        } else {
+            self.y = y as usize;
+        }
+    }
+}
+
+fn render3d(vk: &mut Vk, vk_state: &mut VkState, fb_state: &FBState) {
+    {
+        // We need to synchronize here to send new data to the GPU.
+        // We can't send the new framebuffer until the previous frame is done being drawn.
+        // Dropping the future will block until it's done.
+        if let Some(mut fut) = vk_state.previous_frame_end.take() {
+            fut.cleanup_finished();
+        }
+    }
+    // Now we can copy into our buffer.
+    {
+        let writable_fb = &mut *fb_state.fb2d_buffer.write().unwrap();
+        writable_fb.copy_from_slice(&fb_state.fb2d.buffer);
+    }
+
+    if vk_state.recreate_swapchain {
+        let dimensions: [u32; 2] = vk.surface.window().inner_size().into();
+        let (new_swapchain, new_images) =
+            match vk.swapchain.recreate().dimensions(dimensions).build() {
+                Ok(r) => r,
+                Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+            };
+
+        vk.swapchain = new_swapchain;
+        vk_state.framebuffers = window_size_dependent_setup(
+            &new_images,
+            vk_state.render_pass.clone(),
+            &mut vk_state.viewport,
+        );
+        vk_state.recreate_swapchain = false;
+    }
+    let (image_num, suboptimal, acquire_future) =
+        match swapchain::acquire_next_image(vk.swapchain.clone(), None) {
+            Ok(r) => r,
+            Err(AcquireError::OutOfDate) => {
+                vk_state.recreate_swapchain = true;
+                return;
+            }
+            Err(e) => panic!("Failed to acquire next image: {:?}", e),
+        };
+    if suboptimal {
+        vk_state.recreate_swapchain = true;
+    }
+
+    let mut builder = AutoCommandBufferBuilder::primary(
+        vk.device.clone(),
+        vk.queue.family(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
+
+    builder
+        // Now copy that framebuffer buffer into the framebuffer image
+        .copy_buffer_to_image(fb_state.fb2d_buffer.clone(), fb_state.fb2d_image.clone())
+        .unwrap()
+        // And resume our regularly scheduled programming
+        .begin_render_pass(
+            vk_state.framebuffers[image_num].clone(),
+            SubpassContents::Inline,
+            std::iter::once(vulkano::format::ClearValue::None),
+        )
+        .unwrap()
+        .set_viewport(0, [vk_state.viewport.clone()])
+        .bind_pipeline_graphics(fb_state.pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Graphics,
+            fb_state.pipeline.layout().clone(),
+            0,
+            fb_state.set.clone(),
+        )
+        .bind_vertex_buffers(0, fb_state.vertex_buffer.clone())
+        .draw(fb_state.vertex_buffer.len() as u32, 1, 0, 0)
+        .unwrap()
+        .end_render_pass()
+        .unwrap();
+
+    let command_buffer = builder.build().unwrap();
+
+    let future = acquire_future
+        .then_execute(vk.queue.clone(), command_buffer)
+        .unwrap()
+        .then_swapchain_present(vk.queue.clone(), vk.swapchain.clone(), image_num)
+        .then_signal_fence_and_flush();
+
+    match future {
+        Ok(future) => {
+            vk_state.previous_frame_end = Some(future.boxed());
+        }
+        Err(FlushError::OutOfDate) => {
+            vk_state.recreate_swapchain = true;
+            vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
+        }
+        Err(e) => {
+            println!("Failed to flush future: {:?}", e);
+            vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
+        }
+    }
+}
+
 pub fn main() {
     let mut vk = Vk::new();
     let mut vk_state = VkState::new(&vk);
+    let event_loop = EventLoop::new();
+    let mut game_state = GameState::new(Character::Luigi);
 
-    let mut fb2d = Image {
+    // ---------------------------------------------------------------------------------
+    // Beginning of Game Stuff
+    let fb2d = Image {
         buffer: vec![(0, 0, 0, 255); (HEIGHT * WIDTH) as usize].into_boxed_slice(),
         sz: Vec2i {
             x: WIDTH as i32,
             y: HEIGHT as i32,
         },
     };
-
-    let mut sprite_num = 1;
-    let mut from = Rect {
-        pos: Vec2i { x: 0, y: 0 },
-        sz: Vec2i {
-            x: SPRITE_RECT_WIDTH as i32,
-            y: SPRITE_RECT_HEIGHT as i32,
-        },
-    };
     let mut to = Vec2i { x: 0, y: 0 };
-    let sprite_sheet_image = Image::from_file(std::path::Path::new("../hoophorse/content/spritesheet.png"));
-    let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
 
+    let mut fb_state = FBState::new(&vk, &vk_state, fb2d);
     let mut now_keys = [false; 255];
     let mut prev_keys = now_keys.clone();
-
     let mut now_lmouse = false;
     let mut prev_lmouse = false;
+    let event_loop = EventLoop::new();
 
     let mut player = Rect {
-        pos: Vec2i { x: (WIDTH as i32)/4 - PLAYER_WIDTH/2, y: (HEIGHT as i32) - 48 - PLAYER_HEIGHT },
-        sz: Vec2i { x: PLAYER_WIDTH, y: PLAYER_HEIGHT }
+        pos: Vec2i {
+            x: (WIDTH as i32) / 4 - PLAYER_WIDTH / 2,
+            y: (HEIGHT as i32) - 48 - PLAYER_HEIGHT,
+        },
+        sz: Vec2i {
+            x: PLAYER_WIDTH,
+            y: PLAYER_HEIGHT,
+        },
     };
 
     let mut vx = 0.0;
     let mut vy = 0.0;
     let mut ax = 0.0;
-    let ay = 0.2;
+    let mut ay = 0.2;
+    // End of Game stuff
+    // ---------------------------------------------------------------
 
     let mut jumping = false;
-    
-    let img = Rc::new(Image::from_file(std::path::Path::new("content/tilesheet.png")));
+
+    let img = Rc::new(Image::from_file(std::path::Path::new(
+        "content/tilesheet.png",
+    )));
     let tileset = Rc::new(Tileset::new(
         vec![
             Tile { solid: true },
@@ -405,36 +602,30 @@ pub fn main() {
         img.clone(),
     ));
     let map = Tilemap::new(
-        Vec2i{x:0,y:0},
+        Vec2i { x: 0, y: 0 },
         (20, 20),
         tileset.clone(),
         vec![
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            9, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            8, 5, 5, 5, 5, 5, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            2, 2, 2, 2, 2, 2, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 6,
+            6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+            6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 9, 6, 6, 6, 6, 6, 6, 6, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 5, 5, 5, 5, 5, 5, 6,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
         ],
     );
 
     map.draw(&mut fb_state.fb2d);
 
-    vk.event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -532,27 +723,15 @@ pub fn main() {
                     jumping = true;
                 }
 
-                if now_keys[VirtualKeyCode::Down as usize]
-                {
-
-                }
+                if now_keys[VirtualKeyCode::Down as usize] {}
                 if now_keys[VirtualKeyCode::Left as usize] {
                     if vx > -2.0 {
                         ax = -0.2;
                     } else {
                         ax = 0.0
                     }
-                    if !prev_keys[VirtualKeyCode::Left as usize] {
-                        if sprite_num > 1 {
-                            sprite_num -= 1;
-                            let new_x_pos = (from.pos.x / sprite_num) % WIDTH as i32;
-                            from = Rect {
-                                pos: Vec2i { x: new_x_pos, y: 0 },
-                                sz: Vec2i { x: 165, y: 320 },
-                            };
-                            to = Vec2i { x: new_x_pos, y: 0 };
-                        }
-                    }
+
+                    if !prev_keys[VirtualKeyCode::Left as usize] {}
                 } else if now_keys[VirtualKeyCode::Right as usize] {
                     if vx < 2.0 {
                         ax = 0.2;
@@ -560,15 +739,12 @@ pub fn main() {
                         ax = 0.0
                     }
                     if !prev_keys[VirtualKeyCode::Right as usize] {
-                        if sprite_num < 6 {
-                            let new_x_pos = (SPRITE_RECT_WIDTH as i32 * sprite_num) % WIDTH as i32;
-                            sprite_num += 1;
-                            from = Rect {
-                                pos: Vec2i { x: new_x_pos, y: 0 },
-                                sz: Vec2i { x: 165, y: 320 },
-                            };
-                            to = Vec2i { x: new_x_pos, y: 0 };
-                        }
+                        game_state.sprite.turn_action();
+                        game_state.sprite.set_animation(
+                            game_state
+                                .animation_set
+                                .play_animation(game_state.sprite.action),
+                        );
                     }
                 } else {
                     if vx > 0.1 {
@@ -579,13 +755,20 @@ pub fn main() {
                         ax = 0.0
                     }
                 }
-                
+                // It's debatable whether the following code should live here or in the drawing section.
+                // First clear the framebuffer...
+                fb_state.fb2d.clear((0, 0, 0, 255));
+                fb_state.fb2d.bitblt(
+                    game_state.animation_set.get_image(),
+                    game_state.sprite.play_animation(&game_state.speedup_factor),
+                    to,
+                );
+
                 // clear the framebuffer back to the static level
                 map.draw(&mut fb_state.fb2d);
 
                 vx += ax;
                 vy += ay;
-                
                 player.move_by(vx as i32, vy as i32);
 
                 let mut ovs = vec![];
@@ -593,11 +776,11 @@ pub fn main() {
                     for j in 0..3 {
                         let p = Vec2i {
                             x: player.pos.x + i * (player.sz.x / 2),
-                            y: player.pos.y + j * (player.sz.y / 2)
+                            y: player.pos.y + j * (player.sz.y / 2),
                         };
                         let r = map.tile_at(p);
                         if r.1.solid {
-                            let mut ov = Vec2i {x:0,y:0};
+                            let mut ov = Vec2i { x: 0, y: 0 };
                             if vx > 0.0 {
                                 ov.x = r.0.x - (player.pos.x + PLAYER_WIDTH);
                             } else {
@@ -615,7 +798,7 @@ pub fn main() {
                     }
                 }
 
-                let mut disps = Vec2i{x:0,y:0};
+                let mut disps = Vec2i { x: 0, y: 0 };
                 let mut resolved = false;
                 for ov in ovs.iter() {
                     // Touching but not overlapping
@@ -653,8 +836,8 @@ pub fn main() {
                 }
 
                 // check to make sure player is in screen bounds
-                if player.pos.x < 0 { 
-                    player.pos.x = 0 
+                if player.pos.x < 0 {
+                    player.pos.x = 0
                 }
                 if player.pos.x > WIDTH as i32 - player.sz.x {
                     player.pos.x = WIDTH as i32 - player.sz.x
@@ -666,102 +849,9 @@ pub fn main() {
                     player.pos.y = HEIGHT as i32 - player.sz.y;
                 }
 
-                fb_state.fb2d.draw_rect(&player, (255,255,255,255));
+                fb_state.fb2d.draw_rect(&player, (255, 255, 255, 255));
 
-                // fb_state.fb2d.bitblt(&sprite_sheet_image, from, to);
-
-                {
-                    if let Some(mut fut) = vk_state.previous_frame_end.take() {
-                        fut.cleanup_finished();
-                    }
-                }
-                
-                {
-                    let writable_fb = &mut *fb_state.fb2d_buffer.write().unwrap();
-                    writable_fb.copy_from_slice(&fb_state.fb2d.buffer);
-                }
-
-                if vk_state.recreate_swapchain {
-                    let dimensions: [u32; 2] = vk.surface.window().inner_size().into();
-                    let (new_swapchain, new_images) =
-                        match vk.swapchain.recreate().dimensions(dimensions).build() {
-                            Ok(r) => r,
-                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                        };
-
-                    vk.swapchain = new_swapchain;
-                    vk_state.framebuffers = window_size_dependent_setup(
-                        &new_images,
-                        vk_state.render_pass.clone(),
-                        &mut vk_state.viewport,
-                    );
-                    vk_state.recreate_swapchain = false;
-                }
-                let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(vk.swapchain.clone(), None) {
-                        Ok(r) => r,
-                        Err(AcquireError::OutOfDate) => {
-                            vk_state.recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
-                    };
-                if suboptimal {
-                    vk_state.recreate_swapchain = true;
-                }
-
-                let mut builder = AutoCommandBufferBuilder::primary(
-                    vk.device.clone(),
-                    vk.queue.family(),
-                    CommandBufferUsage::OneTimeSubmit,
-                )
-                .unwrap();
-
-                builder
-                    .copy_buffer_to_image(fb_state.fb2d_buffer.clone(), fb_state.fb2d_image.clone())
-                    .unwrap()
-                    .begin_render_pass(
-                        vk_state.framebuffers[image_num].clone(),
-                        SubpassContents::Inline,
-                        std::iter::once(vulkano::format::ClearValue::None),
-                    )
-                    .unwrap()
-                    .set_viewport(0, [vk_state.viewport.clone()])
-                    .bind_pipeline_graphics(fb_state.pipeline.clone())
-                    .bind_descriptor_sets(
-                        PipelineBindPoint::Graphics,
-                        fb_state.pipeline.layout().clone(),
-                        0,
-                        fb_state.set.clone(),
-                    )
-                    .bind_vertex_buffers(0, fb_state.vertex_buffer.clone())
-                    .draw(fb_state.vertex_buffer.len() as u32, 1, 0, 0)
-                    .unwrap()
-                    .end_render_pass()
-                    .unwrap();
-
-                let command_buffer = builder.build().unwrap();
-
-                let future = acquire_future
-                    .then_execute(vk.queue.clone(), command_buffer)
-                    .unwrap()
-                    .then_swapchain_present(vk.queue.clone(), vk.swapchain.clone(), image_num)
-                    .then_signal_fence_and_flush();
-
-                match future {
-                    Ok(future) => {
-                        vk_state.previous_frame_end = Some(future.boxed());
-                    }
-                    Err(FlushError::OutOfDate) => {
-                        vk_state.recreate_swapchain = true;
-                        vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
-                    }
-                    Err(e) => {
-                        println!("Failed to flush future: {:?}", e);
-                        vk_state.previous_frame_end = Some(sync::now(vk.device.clone()).boxed());
-                    }
-                }
+                render3d(&mut vk, &mut vk_state, &fb_state);
             }
             _ => (),
         }
@@ -788,3 +878,7 @@ fn window_size_dependent_setup(
         })
         .collect::<Vec<_>>()
 }
+
+// fn get_animation_state(animation_states: &Vec<AnimationState>, index: usize) -> AnimationState {
+//     animation_states[index].clone()
+// }
