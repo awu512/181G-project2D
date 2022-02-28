@@ -6,6 +6,8 @@ use crate::types::Rect;
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Character {
     Cat,
+    Mario,
+    Luigi,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]

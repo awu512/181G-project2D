@@ -54,6 +54,8 @@ const WIDTH: usize = 700;
 const HEIGHT: usize = 700;
 const SPRITE_RECT_WIDTH: usize = 443;
 const SPRITE_RECT_HEIGHT: usize = 401;
+const MARIO_RECT_WIDTH: usize = 22;
+const MARIO_RECT_HEIGHT: usize = 34;
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
@@ -350,189 +352,21 @@ struct GameState {
 }
 
 impl GameState {
-    pub fn new() -> Self {
-        let mut animation_set: AnimationSet = AnimationSet {
-            character: Character::Cat,
-            image: Image::from_file(std::path::Path::new("../engine/cat-spritesheet.png")),
-            animations: HashMap::new(),
-        };
-        animation_set.animations.insert(
-            Action::Walk,
-            Rc::new(Animation {
-                frames: vec![
-                    Rect {
-                        pos: Vec2i { x: 2273, y: 3882 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 2803, y: 3882 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32 as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 3343, y: 3882 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 3883, y: 3882 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                ],
-                frame_timings: vec![0, 10, 20, 30],
-                loops: true,
-            }),
-        );
-        animation_set.animations.insert(
-            Action::Jump,
-            Rc::new(Animation {
-                frames: vec![
-                    Rect {
-                        pos: Vec2i { x: 1187, y: 2431 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 1717, y: 2431 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 1710, y: 2431 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 2220, y: 2431 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 2770, y: 2431 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 3310, y: 2431 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 3850, y: 2431 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                ],
-                frame_timings: vec![0, 10, 20, 30, 40],
-                loops: true,
-            }),
-        );
-        animation_set.animations.insert(
-            Action::Die,
-            Rc::new(Animation {
-                frames: vec![
-                    Rect {
-                        pos: Vec2i { x: 3962, y: 70 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 542, y: 70 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 1142, y: 70 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 1742, y: 70 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 2332, y: 70 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 2902, y: 70 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 3462, y: 70 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32 as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                    Rect {
-                        pos: Vec2i { x: 104, y: 70 },
-                        sz: Vec2i {
-                            x: SPRITE_RECT_WIDTH as i32,
-                            y: SPRITE_RECT_HEIGHT as i32,
-                        },
-                    },
-                ],
-                frame_timings: vec![0, 10, 20, 30, 40, 50, 60, 70, 80],
-                loops: true,
-            }),
-        );
+    pub fn new(character: Character) -> Self {
+        let animation_set = AnimationSet::new(character);
         let sprite = Sprite {
-            character: Character::Cat,
+            character: character,
             action: Action::Walk,
             animation_state: animation_set.play_animation(Action::Walk),
             shape: Rect {
                 pos: Vec2i { x: 20, y: 20 },
                 sz: Vec2i {
-                    x: SPRITE_RECT_WIDTH as i32,
-                    y: SPRITE_RECT_HEIGHT as i32,
+                    x: MARIO_RECT_WIDTH as i32,
+                    y: MARIO_RECT_HEIGHT as i32,
                 },
             },
         };
-        // find a way to let one animation run and stop. - DONE
-        // find a way to do different animations. - DONE
-        // figure out what the scale factor is supposed to do. - DONE
         let speedup_factor = 5; // this acts more like a slow down factor.
-
         GameState {
             sprite: sprite,
             animation_set: animation_set,
@@ -707,7 +541,7 @@ pub fn main() {
     let mut vk = Vk::new();
     let mut vk_state = VkState::new(&vk);
     let event_loop = EventLoop::new();
-    let mut game_state = GameState::new();
+    let mut game_state = GameState::new(Character::Luigi);
 
     // ---------------------------------------------------------------------------------
     // Beginning of Game Stuff
