@@ -577,7 +577,24 @@ pub fn main() {
     let mut vx = 0.0;
     let mut vy = 0.0;
     let mut ax = 0.0;
-    let mut ay = 0.2;
+    let ay = 0.2;
+
+    let mut ball = Rect {
+        pos: Vec2i {
+            x: 0,
+            y: 0,
+        },
+        sz: Vec2i {
+            x: 8,
+            y: 8,
+        },
+    };
+
+    let mut bvx = 0.0;
+    let mut bvy = 0.0;
+    let bay = 0.2;
+
+    let mut ball_shot = false;
     // End of Game stuff
     // ---------------------------------------------------------------
 
@@ -715,6 +732,16 @@ pub fn main() {
                 } else {
                 }
 
+                if now_keys[VirtualKeyCode::Space as usize]
+                    && !prev_keys[VirtualKeyCode::Space as usize]
+                    && !ball_shot
+                {
+                    ball_shot = true;
+                    ball.pos = player.pos;
+                    bvx = -5.0;
+                    bvy = -3.0;
+                }
+
                 if now_keys[VirtualKeyCode::Up as usize]
                     && !prev_keys[VirtualKeyCode::Up as usize]
                     && !jumping
@@ -730,21 +757,11 @@ pub fn main() {
                     } else {
                         ax = 0.0
                     }
-
-                    if !prev_keys[VirtualKeyCode::Left as usize] {}
                 } else if now_keys[VirtualKeyCode::Right as usize] {
                     if vx < 2.0 {
                         ax = 0.2;
                     } else {
                         ax = 0.0
-                    }
-                    if !prev_keys[VirtualKeyCode::Right as usize] {
-                        game_state.sprite.turn_action();
-                        game_state.sprite.set_animation(
-                            game_state
-                                .animation_set
-                                .play_animation(game_state.sprite.action),
-                        );
                     }
                 } else {
                     if vx > 0.1 {
@@ -824,9 +841,6 @@ pub fn main() {
                         jumping = false;
                         resolved = true;
                         break;
-                    } else {
-                        // otherwise, we can't actually handle this displacement because we had a contradictory
-                        // displacement earlier in the frame.
                     }
                 }
                 // Couldn't resolve collision, player must be squashed or trapped (e.g. by a moving platform)
@@ -846,6 +860,14 @@ pub fn main() {
                 }
                 if player.pos.y > HEIGHT as i32 - player.sz.y {
                     player.pos.y = HEIGHT as i32 - player.sz.y;
+                }
+
+                if ball_shot {
+                    bvy += bay;
+
+                    ball.move_by(bvx as i32, bvy as i32);
+
+                    fb_state.fb2d.draw_rect(&ball, (255,255,255,255));
                 }
 
                 render3d(&mut vk, &mut vk_state, &fb_state);
