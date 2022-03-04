@@ -30,6 +30,12 @@ struct State {
     vy: f32,
     ax: f32,
     ay: f32,
+    ball: Rect,
+    ball_shot: bool,
+    bvx: f32,
+    bvy: f32,
+    bay: f32,
+    meter: Rect
 }
 
 struct Game {}
@@ -93,9 +99,25 @@ impl engine::eng::Game for Game {
 
     fn update(state: &mut State, _assets: &mut Assets, now_keys: &[bool], prev_keys: &[bool]) {
         use winit::event::VirtualKeyCode;
+
         // Keyboard Events
-        if now_keys[VirtualKeyCode::LShift as usize] || now_keys[VirtualKeyCode::RShift as usize] {
-        } else {
+        if !state.ball_shot {
+            if now_keys[VirtualKeyCode::Space as usize]
+            && !prev_keys[VirtualKeyCode::Space as usize] {
+                // meter code
+            } else if !now_keys[VirtualKeyCode::Space as usize]
+                && prev_keys[VirtualKeyCode::Space as usize] {
+                // meter code
+            }
+        }
+        if now_keys[VirtualKeyCode::Space as usize]
+            && !prev_keys[VirtualKeyCode::Space as usize]
+            && !state.ball_shot
+        {
+            state.ball_shot = true;
+            state.ball.pos = state.player.pos;
+            state.bvx = -5.0;
+            state.bvy = -3.0;
         }
 
         if now_keys[VirtualKeyCode::Up as usize]
@@ -245,6 +267,21 @@ impl engine::eng::Game for Game {
         if state.player.pos.y > HEIGHT as i32 - state.player.sz.y {
             state.player.pos.y = HEIGHT as i32 - state.player.sz.y;
         }
+
+        if state.ball_shot {
+            if state.ball.pos.x + state.ball.sz.x > 0 && state.ball.pos.y < HEIGHT as i32 {
+                state.bvy += state.bay;
+
+                state.ball.move_by(state.bvx as i32, state.bvy as i32);
+
+                fb2d.draw_rect(&state.ball, (255,255,255,255));
+            } else {
+                state.ball_shot = false;
+                state.bvx = 0.0;
+                state.bvy = 0.0;
+            }
+        }
+
     }
 }
 
@@ -274,6 +311,31 @@ impl State {
                 y: PLAYER_HEIGHT,
             },
         };
+
+        // BALL
+        let ball = Rect {
+            pos: Vec2i {
+                x: 0,
+                y: 0,
+            },
+            sz: Vec2i {
+                x: 8,
+                y: 8,
+            },
+        };
+
+        // POWER METER
+        let meter = Rect {
+            pos: Vec2i {
+                x: 0,
+                y: 0,
+            },
+            sz: Vec2i {
+                x: 4,
+                y: 0,
+            },
+        };
+
         State {
             player: player,
             sprite: sprite,
@@ -285,6 +347,12 @@ impl State {
             vy: 0.0,
             ax: 0.0,
             ay: 0.2,
+            ball,
+            ball_shot: false,
+            bvx: 0.0,
+            bvy: 0.0,
+            bay: 0.2,
+            meter,
         }
     }
 }
