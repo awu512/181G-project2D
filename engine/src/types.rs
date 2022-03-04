@@ -58,17 +58,23 @@ impl Image {
     }
     pub fn from_file(p: &std::path::Path) -> Self {
         let img = image_reading::open(p).unwrap().into_rgba8();
-        let sz = Vec2i{x:img.width() as i32, y:img.height() as i32};
+        let sz = Vec2i {
+            x: img.width() as i32,
+            y: img.height() as i32,
+        };
         let img = img.into_vec();
         Self {
-            buffer:img.chunks_exact(4).map(|px| {
-                let a = px[3] as f32 / 255.0;
-                let r = (px[0] as f32 * a) as u8;
-                let g = (px[1] as f32 * a) as u8;
-                let b = (px[2] as f32 * a) as u8;
-                (r,g,b,(a * 255.0) as u8)
-            }).collect(),
-            sz
+            buffer: img
+                .chunks_exact(4)
+                .map(|px| {
+                    let a = px[3] as f32 / 255.0;
+                    let r = (px[0] as f32 * a) as u8;
+                    let g = (px[1] as f32 * a) as u8;
+                    let b = (px[2] as f32 * a) as u8;
+                    (r, g, b, (a * 255.0) as u8)
+                })
+                .collect(),
+            sz,
         }
     }
 
@@ -82,10 +88,12 @@ impl Image {
 
     pub fn draw_rect(&mut self, rect: &Rect, color: Color) {
         for y in (rect.pos.y)..(rect.pos.y + rect.sz.y) {
-            self.buffer[
-                ((y*self.sz.x + rect.pos.x) as usize)..
-                ((y*self.sz.x + rect.pos.x + rect.sz.x) as usize)]
-            .fill(color);
+            for x in (rect.pos.x)..(rect.pos.x + rect.sz.x) {
+                if (y*self.sz.x + x) < self.sz.x * self.sz.y && x >= 0 {
+                    self.buffer[(y*self.sz.x + x) as usize..((y*self.sz.x + x) as usize) + 1]
+                        .fill(color);
+                }
+            }
         }
     }
 
@@ -96,7 +104,7 @@ impl Image {
         self.buffer[y * self.sz.x as usize + x0..(y * self.sz.x as usize + x1)].fill(c);
     }
 
-    pub fn bitblt(&mut self, src: &Image, from: Rect, to: Vec2i) {
+    pub fn bitblt(&mut self, src: &Image, from: Rect, to: Vec2i, flip: bool) {
         assert!(Rect {
             pos: Vec2i { x: 0, y: 0 },
             sz: src.sz
@@ -113,7 +121,6 @@ impl Image {
         let x_skip = to_x.max(0) - to_x;
         let y_count = (to_y + from.sz.y as i32).min(self.sz.y) - to_y;
         let x_count = (to_x + from.sz.x as i32).min(self.sz.x) - to_x;
-        
         debug_assert!(0 <= x_skip);
         debug_assert!(0 <= y_skip);
         debug_assert!(0 <= x_count);
@@ -126,12 +133,10 @@ impl Image {
         debug_assert!(0 <= from.pos.y + y_skip);
         debug_assert!(to_x + x_count <= self.sz.x);
         debug_assert!(to_y + y_count <= self.sz.y);
-        
         let from_start: usize = src_pitch * (from.pos.y + y_skip) as usize;
         let from_stop: usize = src_pitch * (from.pos.y + y_count) as usize;
         let to_start: usize = dst_pitch * (to_y + y_skip) as usize;
         let to_stop: usize = dst_pitch * (to_y + y_count) as usize;
-        
         for (row_a, row_b) in src.buffer[from_start..from_stop]
             .chunks_exact(src_pitch)
             .zip(self.buffer[to_start..to_stop].chunks_exact_mut(dst_pitch))
@@ -142,7 +147,12 @@ impl Image {
             let from_row_start = (from.pos.x + x_skip) as usize;
             let from_row_stop = (from.pos.x + x_count) as usize;
             let from_cols = row_a[from_row_start..from_row_stop].iter();
-            
+            let from_cols = if flip {
+                Box::new(row_a[from_row_start..from_row_stop].iter().rev())
+                    as Box<dyn Iterator<Item = &Color>>
+            } else {
+                Box::new(from_cols) as Box<dyn Iterator<Item = &Color>>
+            };
             for (to, from) in to_cols.zip(from_cols) {
                 let ta = to.3 as f32 / 255.0;
                 let fa = from.3 as f32 / 255.0;
@@ -160,3 +170,5 @@ impl Image {
         }
     }
 }
+
+
