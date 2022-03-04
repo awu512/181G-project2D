@@ -1,13 +1,11 @@
-use std::rc::Rc;
-
-use crate::animations::{Animation, AnimationSet, AnimationState};
+use crate::animations::AnimationState;
 use crate::types::Rect;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Character {
-    Cat,
     Mario,
     Luigi,
+    SpaceInvader,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -15,6 +13,7 @@ pub enum Action {
     Walk,
     Die,
     Jump,
+    Stand,
 }
 
 impl Action {
@@ -24,7 +23,8 @@ impl Action {
         match *self {
             Walk => Jump,
             Jump => Die,
-            Die => Walk,
+            Die => Stand,
+            Stand => Walk,
         }
     }
 }

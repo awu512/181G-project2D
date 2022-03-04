@@ -10,9 +10,11 @@
 // according to those terms.
 
 pub mod animations;
+pub mod eng;
 pub mod sprite;
 pub mod tiles;
 pub mod types;
+
 use tiles::{Tile, Tilemap, Tileset};
 
 use animations::{Animation, AnimationSet, AnimationState};
