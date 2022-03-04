@@ -5,7 +5,7 @@ use std::rc::Rc;
 pub const TILE_SZ: usize = 16;
 
 /// A graphical tile, we'll implement Copy since it's tiny
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy)]
 pub struct Tile {
     pub solid: bool, // ... any extra data like collision flags or other properties
 }
@@ -13,11 +13,11 @@ pub struct Tile {
 /// A set of tiles used in multiple Tilemaps
 pub struct Tileset {
     pub tiles: Vec<Tile>,
-    image: Rc<Image>
+    image: Rc<Image>,
 }
 
 /// Indices into a Tileset
-#[derive(Clone,Copy,PartialEq,Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct TileID(usize);
 
 /// Grab a tile with a given ID
@@ -43,14 +43,14 @@ impl Tileset {
         let row = idx / tw;
         let col = idx - (row * tw);
         Rect {
-            pos: Vec2i { 
+            pos: Vec2i {
                 x: col as i32 * TILE_SZ as i32,
-                y: row as i32 * TILE_SZ as i32
+                y: row as i32 * TILE_SZ as i32,
             },
             sz: Vec2i {
                 x: TILE_SZ as i32,
-                y: TILE_SZ as i32
-            }
+                y: TILE_SZ as i32,
+            },
         }
     }
 }
@@ -60,7 +60,7 @@ pub struct Tilemap {
     /// Where the tilemap is in space
     pub position: Vec2i,
     /// How big it is
-    dims: (usize,usize),
+    dims: (usize, usize),
     /// Which tileset is used for this tilemap
     tileset: Rc<Tileset>,
     /// A row-major grid of tile IDs in tileset
@@ -83,18 +83,17 @@ impl Tilemap {
         }
     }
 
-    pub fn tile_id_at(&self, Vec2i{x,y}: Vec2i) -> (Vec2i,TileID) {
+    pub fn tile_id_at(&self, Vec2i { x, y }: Vec2i) -> (Vec2i, TileID) {
         // Translate into map coordinates
         let x = (x - self.position.x) / TILE_SZ as i32;
         let y = (y - self.position.y) / TILE_SZ as i32;
-        
         // return the tile corner and the tile ID
         (
             Vec2i {
-                x: x*TILE_SZ as i32 + self.position.x, 
-                y: y*TILE_SZ as i32 + self.position.y
+                x: x * TILE_SZ as i32 + self.position.x,
+                y: y * TILE_SZ as i32 + self.position.y,
             },
-            self.map[y as usize * self.dims.0 + x as usize]
+            self.map[y as usize * self.dims.0 + x as usize],
         )
     }
 
@@ -102,9 +101,9 @@ impl Tilemap {
         self.dims
     }
 
-    pub fn tile_at(&self, posn: Vec2i) -> (Vec2i,Tile) {
-        let (pos,tile_id) = self.tile_id_at(posn);
-        (pos,self.tileset[tile_id])
+    pub fn tile_at(&self, posn: Vec2i) -> (Vec2i, Tile) {
+        let (pos, tile_id) = self.tile_id_at(posn);
+        (pos, self.tileset[tile_id])
     }
 
     pub fn draw(&self, screen: &mut Image) {
@@ -115,7 +114,7 @@ impl Tilemap {
             for (x, id) in row.iter().enumerate() {
                 let xpx = (x * TILE_SZ) as i32 + self.position.x;
                 let frame = self.tileset.get_rect(*id);
-                screen.bitblt(&self.tileset.image, frame, Vec2i{x:xpx, y:ypx});
+                screen.bitblt(&self.tileset.image, frame, Vec2i { x: xpx, y: ypx }, false);
             }
         }
     }
