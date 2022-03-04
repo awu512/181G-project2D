@@ -563,6 +563,7 @@ pub fn main() {
     let mut prev_lmouse = false;
     let event_loop = EventLoop::new();
 
+    // PLAYER
     let mut player = Rect {
         pos: Vec2i {
             x: (WIDTH as i32) / 4 - PLAYER_WIDTH / 2,
@@ -579,6 +580,7 @@ pub fn main() {
     let mut ax = 0.0;
     let ay = 0.2;
 
+    // BALL
     let mut ball = Rect {
         pos: Vec2i {
             x: 0,
@@ -595,6 +597,19 @@ pub fn main() {
     let bay = 0.2;
 
     let mut ball_shot = false;
+
+    // POWER METER
+    let mut meter = Rect {
+        pos: Vec2i {
+            x: 0,
+            y: 0,
+        },
+        sz: Vec2i {
+            x: 4,
+            y: 0,
+        },
+    };
+
     // End of Game stuff
     // ---------------------------------------------------------------
 
@@ -732,6 +747,16 @@ pub fn main() {
                 } else {
                 }
 
+                if !ball_shot {
+                    if now_keys[VirtualKeyCode::Space as usize]
+                    && !prev_keys[VirtualKeyCode::Space as usize] {
+
+                    } else if !now_keys[VirtualKeyCode::Space as usize]
+                        && prev_keys[VirtualKeyCode::Space as usize] {
+
+                    }
+                    
+                }
                 if now_keys[VirtualKeyCode::Space as usize]
                     && !prev_keys[VirtualKeyCode::Space as usize]
                     && !ball_shot
@@ -788,29 +813,28 @@ pub fn main() {
                 player.move_by(vx as i32, vy as i32);
 
                 let mut ovs = vec![];
-                for i in 0..3 {
-                    for j in 0..3 {
-                        let p = Vec2i {
-                            x: player.pos.x + i * (player.sz.x / 2),
-                            y: player.pos.y + j * (player.sz.y / 2),
-                        };
-                        let r = map.tile_at(p);
-                        if r.1.solid {
-                            let mut ov = Vec2i { x: 0, y: 0 };
-                            if vx > 0.0 {
-                                ov.x = r.0.x - (player.pos.x + PLAYER_WIDTH);
-                            } else {
-                                ov.x = (r.0.x + TILE_SZ) - player.pos.x;
-                            }
-
-                            if vy > 0.0 {
-                                ov.y = r.0.y - (player.pos.y + PLAYER_HEIGHT);
-                            } else {
-                                ov.y = (r.0.y + TILE_SZ) - player.pos.y;
-                            }
-
-                            ovs.push(ov);
+                let cpts = vec![(0,0),(0,1),(0,2),(1,0),(1,2),(2,0),(2,1),(2,2)];
+                for (i,j) in cpts {
+                    let p = Vec2i {
+                        x: player.pos.x + i * (player.sz.x / 2),
+                        y: player.pos.y + j * (player.sz.y / 2),
+                    };
+                    let r = map.tile_at(p);
+                    if r.1.solid {
+                        let mut ov = Vec2i { x: 0, y: 0 };
+                        if vx > 0.0 {
+                            ov.x = r.0.x - (player.pos.x + PLAYER_WIDTH);
+                        } else {
+                            ov.x = (r.0.x + TILE_SZ) - player.pos.x;
                         }
+
+                        if vy > 0.0 {
+                            ov.y = r.0.y - (player.pos.y + PLAYER_HEIGHT);
+                        } else {
+                            ov.y = (r.0.y + TILE_SZ) - player.pos.y;
+                        }
+
+                        ovs.push(ov);
                     }
                 }
 
@@ -863,11 +887,17 @@ pub fn main() {
                 }
 
                 if ball_shot {
-                    bvy += bay;
+                    if ball.pos.x + ball.sz.x > 0 && ball.pos.y < HEIGHT as i32 {
+                        bvy += bay;
 
-                    ball.move_by(bvx as i32, bvy as i32);
+                        ball.move_by(bvx as i32, bvy as i32);
 
-                    fb_state.fb2d.draw_rect(&ball, (255,255,255,255));
+                        fb_state.fb2d.draw_rect(&ball, (255,255,255,255));
+                    } else {
+                        ball_shot = false;
+                        bvx = 0.0;
+                        bvy = 0.0;
+                    }
                 }
 
                 render3d(&mut vk, &mut vk_state, &fb_state);
