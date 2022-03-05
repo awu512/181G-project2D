@@ -17,6 +17,7 @@ struct Assets {
     img: Rc<Image>,
     tileset: Rc<Tileset>,
     tilemap: Tilemap,
+    splash: Rc<Image>
 }
 
 struct State {
@@ -35,7 +36,10 @@ struct State {
     bvx: f32,
     bvy: f32,
     bay: f32,
-    meter: Rect
+    meter: Rect,
+    metering: bool,
+    basket: Rect,
+    splash_counter: u8
 }
 
 struct Game {}
@@ -88,10 +92,15 @@ impl engine::eng::Game for Game {
                 4, 4, 4, 4, 4, 4, 4, 4,
             ],
         );
+
+        let splash = Rc::new(Image::from_file(std::path::Path::new(
+            "content/splash.png",
+        )));
         let assets = Assets {
-            img: img,
-            tileset: tileset,
+            img,
+            tileset,
             tilemap: map,
+            splash
         };
         let state = State::new(Character::Mario);
         (state, assets)
@@ -100,26 +109,7 @@ impl engine::eng::Game for Game {
     fn update(state: &mut State, _assets: &mut Assets, now_keys: &[bool], prev_keys: &[bool]) {
         use winit::event::VirtualKeyCode;
 
-        // Keyboard Events
-        if !state.ball_shot {
-            if now_keys[VirtualKeyCode::Space as usize]
-            && !prev_keys[VirtualKeyCode::Space as usize] {
-                // meter code
-            } else if !now_keys[VirtualKeyCode::Space as usize]
-                && prev_keys[VirtualKeyCode::Space as usize] {
-                // meter code
-            }
-        }
-        if now_keys[VirtualKeyCode::Space as usize]
-            && !prev_keys[VirtualKeyCode::Space as usize]
-            && !state.ball_shot
-        {
-            state.ball_shot = true;
-            state.ball.pos = state.player.pos;
-            state.bvx = -5.0;
-            state.bvy = -3.0;
-        }
-
+        // Keyboard Event
         if now_keys[VirtualKeyCode::Up as usize]
             && !prev_keys[VirtualKeyCode::Up as usize]
             && !state.jumping
@@ -170,6 +160,32 @@ impl engine::eng::Game for Game {
                 state.ax = 0.0
             }
         }
+
+        if now_keys[VirtualKeyCode::Space as usize]
+            && !state.ball_shot
+        {
+            state.meter.pos.x = state.player.pos.x + state.player.sz.x;
+            state.meter.pos.y = state.player.pos.y + state.player.sz.y/2 - state.meter.sz.y;
+
+            state.metering = true;
+
+            if state.meter.sz.y < 64 {
+                state.meter.sz.y += 1;
+            }
+        }
+
+        if !now_keys[VirtualKeyCode::Space as usize]
+            && prev_keys[VirtualKeyCode::Space as usize]
+            && !state.ball_shot
+        {
+            state.ball.pos = state.player.pos;
+            state.bvx = -6.0 * (state.meter.sz.y as f32 / 64.0);
+            state.bvy = -4.0;
+            state.metering = false;
+            state.meter.sz.y = 0;
+            state.ball_shot = true;
+        }
+
         if state.vx as i32 == 0 && state.vy as i32 == 0 {
             state
                 .sprite
@@ -268,18 +284,45 @@ impl engine::eng::Game for Game {
             state.player.pos.y = HEIGHT as i32 - state.player.sz.y;
         }
 
+        // BALL CODE
         if state.ball_shot {
-            if state.ball.pos.x + state.ball.sz.x > 0 && state.ball.pos.y < HEIGHT as i32 {
+            if state.basket.contains_point({
+                Vec2i {
+                    x: state.ball.pos.x + state.ball.sz.x/2,
+                    y: state.ball.pos.y + state.ball.sz.y/2
+                }
+            })
+            {
+                state.ball_shot = false;
+                state.splash_counter = 30;
+            }
+            
+
+            if state.ball.pos.x + state.ball.sz.x > 0 && state.ball.pos.y < HEIGHT as i32 && state.ball_shot {
                 state.bvy += state.bay;
 
                 state.ball.move_by(state.bvx as i32, state.bvy as i32);
 
-                fb2d.draw_rect(&state.ball, (255,255,255,255));
+                fb2d.draw_ball(&state.ball);
             } else {
                 state.ball_shot = false;
                 state.bvx = 0.0;
                 state.bvy = 0.0;
             }
+        }
+
+        if state.metering {
+            fb2d.draw_rect(&state.meter, (255,255,255,255));
+        }
+
+        if state.splash_counter > 0 {
+            fb2d.bitblt(
+                &assets.splash,
+                Rect { pos: Vec2i{x:16,y:0}, sz: Vec2i{x:16,y:16}},
+                Vec2i{x:0,y:256},
+                false
+            );
+            state.splash_counter -= 1;
         }
 
     }
@@ -336,6 +379,17 @@ impl State {
             },
         };
 
+        let basket = Rect {
+            pos: Vec2i {
+                x: 4,
+                y: 260,
+            },
+            sz: Vec2i {
+                x: 8,
+                y: 8,
+            }
+        };
+
         State {
             player: player,
             sprite: sprite,
@@ -353,6 +407,9 @@ impl State {
             bvy: 0.0,
             bay: 0.2,
             meter,
+            metering: false,
+            basket,
+            splash_counter: 0
         }
     }
 }
