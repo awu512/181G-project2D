@@ -107,13 +107,9 @@ impl AnimationSet {
     }
 
     pub fn new(character: Character) -> Self {
-        let mut image: Image =
-            Image::from_file(std::path::Path::new("../engine/cat-spritesheet.png"));
+        let image = Image::from_file(std::path::Path::new("../hoophorse/content/spritesheet.png"));
         let mut animations: HashMap<Action, Rc<Animation>> = HashMap::new();
         if character == Character::Mario {
-            image = Image::from_file(std::path::Path::new(
-                "../engine/mario-transparent-spritesheet.png",
-            ));
             animations.insert(
                 Action::Jump,
                 Rc::new(Animation {
@@ -238,7 +234,6 @@ impl AnimationSet {
                 }),
             );
         } else if character == Character::Luigi {
-            image = Image::from_file(std::path::Path::new("../engine/mario-spritesheet.png"));
             animations.insert(
                 Action::Jump,
                 Rc::new(Animation {
@@ -364,9 +359,9 @@ impl AnimationSet {
             );
         }
         AnimationSet {
-            character: character,
-            image: image,
-            animations: animations,
+            character,
+            image,
+            animations,
         }
     }
 }
