@@ -30,6 +30,13 @@ impl Rect {
         self.pos.x <= other.pos.x && self.pos.y <= other.pos.y && obr.x <= br.x && obr.y <= br.y
     }
 
+    pub fn contains_point(&self, point: Vec2i) -> bool {
+        self.pos.x <= point.x && 
+        self.pos.y <= point.y && 
+        self.pos.x + self.sz.x >= point.x && 
+        self.pos.y + self.sz.y >= point.y
+    }
+
     pub fn move_by(&mut self, dx: i32, dy: i32) {
         self.pos.x += dx;
         self.pos.y += dy;
@@ -93,6 +100,33 @@ impl Image {
                     self.buffer[(y*self.sz.x + x) as usize..((y*self.sz.x + x) as usize) + 1]
                         .fill(color);
                 }
+            }
+        }
+    }
+
+    pub fn draw_ball(&mut self, rect: &Rect) {
+        let ball = vec![
+            0, 0, 1, 1, 1, 1, 0, 0,
+            0, 1, 1, 1, 1, 1, 1, 0,
+            1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1,
+            0, 1, 1, 1, 1, 1, 1, 0,
+            0, 0, 1, 1, 1, 1, 0, 0
+        ];
+        let mut coli: usize = 0;
+
+        for y in (rect.pos.y)..(rect.pos.y + rect.sz.y) {
+            for x in (rect.pos.x)..(rect.pos.x + rect.sz.x) {
+                if (y*self.sz.x + x) < self.sz.x * self.sz.y 
+                    && x >= 0 
+                    && ball[coli] > 0 {
+                        let col: Color = (255*ball[coli],159*ball[coli],0,255);
+                        self.buffer[(y*self.sz.x + x) as usize..((y*self.sz.x + x) as usize) + 1]
+                            .fill(col);
+                }
+                coli += 1;
             }
         }
     }
