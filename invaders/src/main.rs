@@ -107,9 +107,9 @@ impl Enemy {
     pub fn new(style: i32, index: Vec2i) -> Self {
         assert!(index.x < 8, "{} is out of range 8", index.x);
         assert!(index.y < 2, "{} is out of range 2", index.y);
-        let character = if style == 1 {
+        let character = if style == 0 {
             Character::SpaceInvaderEnemy1
-        } else if style == 2 {
+        } else if style == 1 {
             Character::SpaceInvaderEnemy2
         } else {
             Character::SpaceInvaderEnemy1
@@ -334,7 +334,10 @@ impl engine::eng::Game for Game {
         }
 
         if !enemies_left {
-            state.game_over = 2;
+            if state.game_over == 0 {
+                state.game_over = 2;
+                dbg!("You win!");
+            }
             // win sequence
         }
 
@@ -376,9 +379,10 @@ impl engine::eng::Game for Game {
 
         // ENEMY BULLET & PLAYER COLLISION
         for enemy_bullet in state.enemy_bullets.iter() {
-            if state.player.contains_point(enemy_bullet.pos) {
+            if state.player_sprite.shape.contains_point(enemy_bullet.pos) {
                 if state.game_over == 0 {
                     state.game_over = 1;
+                    dbg!("You died!");
                     // loss sequence
                 }
             }
