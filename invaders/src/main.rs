@@ -15,11 +15,6 @@ const BULLET_VELO: i32 = 1;
 const RED: Color = (181,49,32,255);
 const BLUE: Color = (74, 206, 222, 255);
 
-const TEMP: Rect = Rect {
-    pos: Vec2i { x: 0, y: 0 },
-    sz: Vec2i { x: 16, y: 16 }
-};
-
 const SS_PLAYER: Rect = Rect {
     pos: Vec2i { x: 32, y: 16 },
     sz: Vec2i { x: 32, y: 16 }
@@ -61,7 +56,7 @@ impl State {
 
         for y in 0..2 {
             for x in 0..8 {
-                enemies.push(Enemy::new(x % 2 + y, Vec2i{x,y}));
+                enemies.push(Enemy::new((x+y) % 2, Vec2i{x,y}));
             }
         }
         
@@ -235,7 +230,7 @@ impl engine::eng::Game for Game {
         state.player_bullets.retain(|b| b.pos.y + b.sz.y > 0);
 
         for bullet in state.player_bullets.iter_mut() {
-            bullet.pos.y -= BULLET_VELO;
+            bullet.pos.y -= 2*BULLET_VELO;
             fb2d.draw_rect(bullet, BLUE);
         }
 
@@ -249,7 +244,6 @@ impl engine::eng::Game for Game {
         
 
         // COLLISION CHECKS
-        // player_bullet & enemy
         // player_bullet & blocker
         // enemy_bullet & player
         // enemy_bullet & blocker
@@ -271,16 +265,36 @@ impl engine::eng::Game for Game {
         let mut rng = rand::thread_rng();
 
         for enemy in state.enemies.iter_mut() {
+
+            let mut dead_bullets = vec![];
+
+            for (i,player_bullet) in state.player_bullets.iter().enumerate() {
+                if enemy.rect.contains_point(player_bullet.pos) && enemy.alive {
+                    // play death animation
+                    enemy.alive = false;
+                    dead_bullets.push(i);
+                }
+            }
+
+            for i in dead_bullets {
+                state.player_bullets.remove(i);
+            }
+
             enemy.rect.move_by(state.evx, 0);
 
-            if rng.gen_range(0..600) == 0 {
+            if rng.gen_range(0..600) == 0 && enemy.alive {
                 state.enemy_bullets.push(enemy.shoot());
             }
+
+            let temp: Rect = Rect {
+                pos: Vec2i { x: 0, y: 16*enemy.style },
+                sz: Vec2i { x: 16, y: 16 }
+            };
 
             if enemy.alive {
                 fb2d.bitblt(
                     &assets.spritesheet, 
-                    TEMP,
+                    temp,
                     enemy.rect.pos, 
                     false
                 );
@@ -288,8 +302,25 @@ impl engine::eng::Game for Game {
         }
 
         // UPDATE BLOCKERS
-        for blocker in state.blockers.iter() {
-            fb2d.draw_rect(&blocker.rect, BLUE);
+        for blocker in state.blockers.iter_mut() {
+
+            let mut dead_bullets = vec![];
+
+            for (i,player_bullet) in state.player_bullets.iter().enumerate() {
+                if blocker.rect.contains_point(player_bullet.pos) && blocker.alive {
+                    // play death animation
+                    blocker.alive = false;
+                    dead_bullets.push(i);
+                }
+            }
+
+            for i in dead_bullets {
+                state.player_bullets.remove(i);
+            }
+
+            if blocker.alive {
+                fb2d.draw_rect(&blocker.rect, BLUE);
+            }
         }
     }
 }
