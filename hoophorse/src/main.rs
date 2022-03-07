@@ -14,10 +14,11 @@ pub const HEIGHT: usize = 320;
 const TILE_SZ: i32 = 16;
 
 struct Assets {
-    img: Rc<Image>,
+    spritesheet: Rc<Image>,
+    tilesheet: Rc<Image>,
     tileset: Rc<Tileset>,
     tilemap: Tilemap,
-    splash: Rc<Image>
+    splash: Rc<Image>,
 }
 
 struct State {
@@ -39,7 +40,7 @@ struct State {
     meter: Rect,
     metering: bool,
     basket: Rect,
-    splash_counter: u8
+    splash_counter: u8,
 }
 
 struct Game {}
@@ -52,8 +53,11 @@ impl engine::eng::Game for Game {
     type Assets = Assets;
     type State = State;
     fn new() -> (State, Assets) {
-        let img = Rc::new(Image::from_file(std::path::Path::new(
+        let tilesheet = Rc::new(Image::from_file(std::path::Path::new(
             "content/tilesheet.png",
+        )));
+        let spritesheet = Rc::new(Image::from_file(std::path::Path::new(
+            "content/spritesheet.png",
         )));
         let tileset = Rc::new(Tileset::new(
             vec![
@@ -68,7 +72,7 @@ impl engine::eng::Game for Game {
                 Tile { solid: false },
                 Tile { solid: false },
             ],
-            img.clone(),
+            tilesheet.clone(),
         ));
         let map = Tilemap::new(
             Vec2i { x: 0, y: 0 },
@@ -93,14 +97,13 @@ impl engine::eng::Game for Game {
             ],
         );
 
-        let splash = Rc::new(Image::from_file(std::path::Path::new(
-            "content/splash.png",
-        )));
+        let splash = Rc::new(Image::from_file(std::path::Path::new("content/splash.png")));
         let assets = Assets {
-            img,
+            spritesheet,
+            tilesheet,
             tileset,
             tilemap: map,
-            splash
+            splash,
         };
         let state = State::new(Character::Mario);
         (state, assets)
@@ -161,11 +164,9 @@ impl engine::eng::Game for Game {
             }
         }
 
-        if now_keys[VirtualKeyCode::Space as usize]
-            && !state.ball_shot
-        {
+        if now_keys[VirtualKeyCode::Space as usize] && !state.ball_shot {
             state.meter.pos.x = state.player.pos.x + state.player.sz.x;
-            state.meter.pos.y = state.player.pos.y + state.player.sz.y/2 - state.meter.sz.y;
+            state.meter.pos.y = state.player.pos.y + state.player.sz.y / 2 - state.meter.sz.y;
 
             state.metering = true;
 
@@ -196,7 +197,7 @@ impl engine::eng::Game for Game {
     fn render(state: &mut State, assets: &mut Assets, fb2d: &mut Image) {
         assets.tilemap.draw(fb2d);
         fb2d.bitblt(
-            state.animation_set.get_image(),
+            &assets.spritesheet,
             state.sprite.play_animation(&state.speedup_factor),
             state.player.pos,
             state.flip,
@@ -288,17 +289,18 @@ impl engine::eng::Game for Game {
         if state.ball_shot {
             if state.basket.contains_point({
                 Vec2i {
-                    x: state.ball.pos.x + state.ball.sz.x/2,
-                    y: state.ball.pos.y + state.ball.sz.y/2
+                    x: state.ball.pos.x + state.ball.sz.x / 2,
+                    y: state.ball.pos.y + state.ball.sz.y / 2,
                 }
-            })
-            {
+            }) {
                 state.ball_shot = false;
                 state.splash_counter = 30;
             }
-            
 
-            if state.ball.pos.x + state.ball.sz.x > 0 && state.ball.pos.y < HEIGHT as i32 && state.ball_shot {
+            if state.ball.pos.x + state.ball.sz.x > 0
+                && state.ball.pos.y < HEIGHT as i32
+                && state.ball_shot
+            {
                 state.bvy += state.bay;
 
                 state.ball.move_by(state.bvx as i32, state.bvy as i32);
@@ -312,19 +314,21 @@ impl engine::eng::Game for Game {
         }
 
         if state.metering {
-            fb2d.draw_rect(&state.meter, (255,255,255,255));
+            fb2d.draw_rect(&state.meter, (255, 255, 255, 255));
         }
 
         if state.splash_counter > 0 {
             fb2d.bitblt(
                 &assets.splash,
-                Rect { pos: Vec2i{x:16,y:0}, sz: Vec2i{x:16,y:16}},
-                Vec2i{x:0,y:256},
-                false
+                Rect {
+                    pos: Vec2i { x: 16, y: 0 },
+                    sz: Vec2i { x: 16, y: 16 },
+                },
+                Vec2i { x: 0, y: 256 },
+                false,
             );
             state.splash_counter -= 1;
         }
-
     }
 }
 
@@ -357,37 +361,19 @@ impl State {
 
         // BALL
         let ball = Rect {
-            pos: Vec2i {
-                x: 0,
-                y: 0,
-            },
-            sz: Vec2i {
-                x: 8,
-                y: 8,
-            },
+            pos: Vec2i { x: 0, y: 0 },
+            sz: Vec2i { x: 8, y: 8 },
         };
 
         // POWER METER
         let meter = Rect {
-            pos: Vec2i {
-                x: 0,
-                y: 0,
-            },
-            sz: Vec2i {
-                x: 4,
-                y: 0,
-            },
+            pos: Vec2i { x: 0, y: 0 },
+            sz: Vec2i { x: 4, y: 0 },
         };
 
         let basket = Rect {
-            pos: Vec2i {
-                x: 4,
-                y: 260,
-            },
-            sz: Vec2i {
-                x: 8,
-                y: 8,
-            }
+            pos: Vec2i { x: 4, y: 260 },
+            sz: Vec2i { x: 8, y: 8 },
         };
 
         State {
@@ -409,7 +395,7 @@ impl State {
             meter,
             metering: false,
             basket,
-            splash_counter: 0
+            splash_counter: 0,
         }
     }
 }

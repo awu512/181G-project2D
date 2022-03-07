@@ -6,6 +6,7 @@ pub enum Character {
     Mario,
     Luigi,
     SpaceInvader,
+    SpaceInvaderEnemy1,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -14,6 +15,7 @@ pub enum Action {
     Die,
     Jump,
     Stand,
+    Glide,
 }
 
 impl Action {
@@ -24,7 +26,8 @@ impl Action {
             Walk => Jump,
             Jump => Die,
             Die => Stand,
-            Stand => Walk,
+            Stand => Glide,
+            Glide => Walk,
         }
     }
 }
