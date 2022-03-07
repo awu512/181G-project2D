@@ -108,9 +108,16 @@ impl Enemy {
     pub fn new(style: i32, index: Vec2i) -> Self {
         assert!(index.x < 8, "{} is out of range 8", index.x);
         assert!(index.y < 2, "{} is out of range 2", index.y);
-        let animation_set = AnimationSet::new(Character::SpaceInvaderEnemy1);
+        let character = if style == 1 {
+            Character::SpaceInvaderEnemy1
+        } else if style == 2 {
+            Character::SpaceInvaderEnemy2
+        } else {
+            Character::SpaceInvaderEnemy1
+        };
+        let animation_set = AnimationSet::new(character);
         let sprite = Sprite {
-            character: Character::SpaceInvaderEnemy1,
+            character: character,
             action: Action::Glide,
             animation_state: animation_set.play_animation(Action::Glide),
             shape: Rect {
@@ -272,7 +279,12 @@ impl engine::eng::Game for Game {
         // enemy_bullet & blocker
 
         // UPDATE EVERYTHING
-        fb2d.bitblt(&assets.spritesheet, SS_PLAYER, state.player_sprite.shape.pos, false);
+        fb2d.bitblt(
+            &assets.spritesheet,
+            SS_PLAYER,
+            state.player_sprite.shape.pos,
+            false,
+        );
 
         // UPDATE ENEMIES
         let left = state.enemies[0].rect.pos.x;

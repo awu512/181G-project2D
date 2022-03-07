@@ -7,6 +7,7 @@ pub enum Character {
     Luigi,
     SpaceInvader,
     SpaceInvaderEnemy1,
+    SpaceInvaderEnemy2,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]

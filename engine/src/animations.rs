@@ -437,6 +437,44 @@ impl AnimationSet {
                     loops: true,
                 }),
             );
+        } else if character == Character::SpaceInvaderEnemy2 {
+            animations.insert(
+                Action::Glide,
+                Rc::new(Animation {
+                    frames: vec![
+                        Rect {
+                            pos: Vec2i { x: 0, y: 16 },
+                            sz: Vec2i {
+                                x: INVADER_ENEMY_RECT_WIDTH as i32,
+                                y: INVADER_ENEMY_RECT_HEIGHT as i32,
+                            },
+                        },
+                        Rect {
+                            pos: Vec2i { x: 16, y: 16 },
+                            sz: Vec2i {
+                                x: INVADER_ENEMY_RECT_WIDTH as i32,
+                                y: INVADER_ENEMY_RECT_HEIGHT as i32,
+                            },
+                        },
+                    ],
+                    frame_timings: vec![0, 10],
+                    loops: true,
+                }),
+            );
+            animations.insert(
+                Action::Die,
+                Rc::new(Animation {
+                    frames: vec![Rect {
+                        pos: Vec2i { x: 32, y: 0 },
+                        sz: Vec2i {
+                            x: INVADER_ENEMY_RECT_WIDTH as i32,
+                            y: INVADER_ENEMY_RECT_HEIGHT as i32,
+                        },
+                    }],
+                    frame_timings: vec![0],
+                    loops: true,
+                }),
+            );
         }
         AnimationSet {
             character,
