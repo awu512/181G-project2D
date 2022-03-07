@@ -1,5 +1,5 @@
 [package]
-name = "game2"
+name = "invaders"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 engine = { path = "../engine" }
+rand = "0.8.5"
+winit = "0.25"

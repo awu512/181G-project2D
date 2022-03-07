@@ -96,7 +96,7 @@ impl Image {
     pub fn draw_rect(&mut self, rect: &Rect, color: Color) {
         for y in (rect.pos.y)..(rect.pos.y + rect.sz.y) {
             for x in (rect.pos.x)..(rect.pos.x + rect.sz.x) {
-                if (y*self.sz.x + x) < self.sz.x * self.sz.y && x >= 0 {
+                if (y*self.sz.x + x) < self.sz.x * self.sz.y && (y*self.sz.x + x) >= 0 {
                     self.buffer[(y*self.sz.x + x) as usize..((y*self.sz.x + x) as usize) + 1]
                         .fill(color);
                 }
