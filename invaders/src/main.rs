@@ -3,6 +3,8 @@ use std::rc::Rc;
 use winit;
 
 use engine;
+use engine::animations::AnimationSet;
+use engine::sprite::{Action, Character, Sprite};
 use engine::types::*;
 
 const PLAYER_WIDTH: i32 = 32;
@@ -12,20 +14,20 @@ pub const HEIGHT: i32 = 320;
 
 const BULLET_VELO: i32 = 1;
 
-const RED: Color = (181,49,32,255);
+const RED: Color = (181, 49, 32, 255);
 const BLUE: Color = (74, 206, 222, 255);
 
 const SS_PLAYER: Rect = Rect {
     pos: Vec2i { x: 32, y: 16 },
-    sz: Vec2i { x: 32, y: 16 }
+    sz: Vec2i { x: 32, y: 16 },
 };
 
 struct Assets {
-    spritesheet: Rc<Image>
+    spritesheet: Rc<Image>,
 }
 
 struct State {
-    player: Rect,
+    player_sprite: Sprite,
     player_bullets: Vec<Rect>,
     vx: f32,
     ax: f32,
@@ -36,21 +38,27 @@ struct State {
 
     blockers: Vec<Blocker>,
     shooting_timeout: u8,
-
+  
     game_over: u8
 }
 
 impl State {
     pub fn new() -> Self {
         // SPRITES
-        let player = Rect {
-            pos: Vec2i {
-                x: WIDTH / 2 - PLAYER_WIDTH / 2,
-                y: HEIGHT - PLAYER_HEIGHT * 3,
-            },
-            sz: Vec2i {
-                x: PLAYER_WIDTH,
-                y: PLAYER_HEIGHT,
+        let animation_set = AnimationSet::new(Character::SpaceInvader);
+        let player_sprite = Sprite {
+            character: Character::SpaceInvader,
+            action: Action::Glide,
+            animation_state: animation_set.play_animation(Action::Glide),
+            shape: Rect {
+                pos: Vec2i {
+                    x: WIDTH / 2 - PLAYER_WIDTH / 2,
+                    y: HEIGHT - PLAYER_HEIGHT * 3,
+                },
+                sz: Vec2i {
+                    x: PLAYER_WIDTH,
+                    y: PLAYER_HEIGHT,
+                },
             },
         };
 
@@ -61,16 +69,15 @@ impl State {
                 enemies.push(Enemy::new((x+y) % 2, Vec2i{x,y}));
             }
         }
-        
         let mut blockers = vec![];
         for y in 0..2 {
             for x in 0..12 {
-                blockers.push(Blocker::new(Vec2i{x, y}));
+                blockers.push(Blocker::new(Vec2i { x, y }));
             }
         }
 
         State {
-            player,
+            player_sprite,
             player_bullets: vec![],
             vx: 0.0,
             ax: 0.0,
@@ -91,41 +98,63 @@ struct Game {}
 
 struct Enemy {
     style: i32,
+    sprite: Sprite,
     rect: Rect,
-    alive: bool
+    alive: bool,
 }
 
 impl Enemy {
     pub fn new(style: i32, index: Vec2i) -> Self {
         assert!(index.x < 8, "{} is out of range 8", index.x);
         assert!(index.y < 2, "{} is out of range 2", index.y);
+        let character = if style == 1 {
+            Character::SpaceInvaderEnemy1
+        } else if style == 2 {
+            Character::SpaceInvaderEnemy2
+        } else {
+            Character::SpaceInvaderEnemy1
+        };
+        let animation_set = AnimationSet::new(character);
+        let sprite = Sprite {
+            character: character,
+            action: Action::Glide,
+            animation_state: animation_set.play_animation(Action::Glide),
+            shape: Rect {
+                pos: Vec2i {
+                    x: 64 + 16 * index.x + (16 * index.x / 2),
+                    y: 32 + 32 * index.y,
+                },
+                sz: Vec2i { x: 16, y: 16 },
+            },
+        };
         Self {
             style,
+            sprite: sprite,
             rect: Rect {
                 pos: Vec2i {
-                    x: 64 + 16*index.x + (16 * index.x/2),
-                    y: 32 + 32*index.y
+                    x: 64 + 16 * index.x + (16 * index.x / 2),
+                    y: 32 + 32 * index.y,
                 },
-                sz: Vec2i { x: 16, y: 16 }
+                sz: Vec2i { x: 16, y: 16 },
             },
-            alive: true
+            alive: true,
         }
     }
 
     pub fn shoot(&self) -> Rect {
-        Rect { 
-            pos: Vec2i { 
-                x: self.rect.pos.x + self.rect.sz.x/2 - 1, 
-                y: self.rect.pos.y + self.rect.sz.y 
-            }, 
-            sz: Vec2i { x: 2, y: 8 }
+        Rect {
+            pos: Vec2i {
+                x: self.rect.pos.x + self.rect.sz.x / 2 - 1,
+                y: self.rect.pos.y + self.rect.sz.y,
+            },
+            sz: Vec2i { x: 2, y: 8 },
         }
     }
 }
 
 struct Blocker {
     rect: Rect,
-    alive: bool
+    alive: bool,
 }
 
 impl Blocker {
@@ -135,12 +164,12 @@ impl Blocker {
         Self {
             rect: Rect {
                 pos: Vec2i {
-                    x: 32 + 16*index.x + 32*(index.x/4),
-                    y: HEIGHT - 96 + 16*index.y
+                    x: 32 + 16 * index.x + 32 * (index.x / 4),
+                    y: HEIGHT - 96 + 16 * index.y,
                 },
-                sz: Vec2i { x: 16, y: 16 }
+                sz: Vec2i { x: 16, y: 16 },
             },
-            alive: true
+            alive: true,
         }
     }
 }
@@ -172,8 +201,7 @@ impl engine::eng::Game for Game {
             } else {
                 state.ax = 0.0
             }
-        } 
-        
+        }
         // RIGHT KEY
         if now_keys[VirtualKeyCode::Right as usize] {
             if state.vx < 1.0 {
@@ -182,9 +210,8 @@ impl engine::eng::Game for Game {
                 state.ax = 0.0
             }
         }
-        
         // BRAKING FORCE
-        if !now_keys[VirtualKeyCode::Left as usize] && !now_keys[VirtualKeyCode::Right as usize]{
+        if !now_keys[VirtualKeyCode::Left as usize] && !now_keys[VirtualKeyCode::Right as usize] {
             if state.vx > 0.1 {
                 state.ax = -0.1
             } else if state.vx < -0.1 {
@@ -199,37 +226,35 @@ impl engine::eng::Game for Game {
             && state.shooting_timeout == 0
         {
             state.shooting_timeout = 20;
-            state.player_bullets.push(
-                Rect { 
-                    pos: Vec2i { 
-                        x: state.player.pos.x + state.player.sz.x/2 - 1, 
-                        y: state.player.pos.y
-                    }, 
-                    sz: Vec2i { x: 2, y: 8 }
-                }
-            )
+            state.player_bullets.push(Rect {
+                pos: Vec2i {
+                    x: state.player_sprite.shape.pos.x + state.player_sprite.shape.sz.x / 2 - 1,
+                    y: state.player_sprite.shape.pos.y,
+                },
+                sz: Vec2i { x: 2, y: 8 },
+            })
         }
     }
 
     fn render(state: &mut State, assets: &mut Assets, fb2d: &mut Image) {
-
-        fb2d.clear((0,0,0,255));
+        fb2d.clear((0, 0, 0, 255));
 
         // PLAYER MOVEMENT
         state.vx += state.ax;
-        state.player.move_by(state.vx as i32, 0);
-
+        state.player_sprite.shape.move_by(state.vx as i32, 0);
 
         // PLAYER BOUNDS CHECK
-        if state.player.pos.x < 0 {
-            state.player.pos.x = 0
+        if state.player_sprite.shape.pos.x < 0 {
+            state.player_sprite.shape.pos.x = 0
         }
-        if state.player.pos.x > WIDTH - state.player.sz.x {
-            state.player.pos.x = WIDTH - state.player.sz.x
+        if state.player_sprite.shape.pos.x > WIDTH - state.player_sprite.shape.sz.x {
+            state.player_sprite.shape.pos.x = WIDTH - state.player_sprite.shape.sz.x
         }
 
         // UPDATE PLAYER BULLETS
-        if state.shooting_timeout > 0 { state.shooting_timeout -= 1 }
+        if state.shooting_timeout > 0 {
+            state.shooting_timeout -= 1
+        }
 
         state.player_bullets.retain(|b| b.pos.y + b.sz.y > 0);
 
@@ -246,18 +271,21 @@ impl engine::eng::Game for Game {
             fb2d.draw_rect(bullet, RED);
         }
 
+
         // UPDATE PLAYER
         fb2d.bitblt(
             &assets.spritesheet,
             SS_PLAYER,
-            state.player.pos, 
-            false
+            state.player_sprite.shape.pos,
+            false,
         );
 
         // UPDATE ENEMIES
         let left = state.enemies[0].rect.pos.x;
         let right = state.enemies.last().unwrap().rect.pos.x + 16;
-        if left <= 16 || right >= WIDTH - 16 { state.evx *= -1 }
+        if left <= 16 || right >= WIDTH - 16 {
+            state.evx *= -1
+        }
 
         let mut rng = rand::thread_rng();
 
@@ -294,11 +322,13 @@ impl engine::eng::Game for Game {
             };
 
             if enemy.alive {
+                let speedup_factor = 7;
+                // fb2d.bitblt(&assets.spritesheet, TEMP, enemy.rect.pos, false);
                 fb2d.bitblt(
-                    &assets.spritesheet, 
-                    temp,
-                    enemy.rect.pos, 
-                    false
+                    &assets.spritesheet,
+                    enemy.sprite.play_animation(&speedup_factor),
+                    enemy.rect.pos,
+                    false,
                 );
             }
         }

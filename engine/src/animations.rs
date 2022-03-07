@@ -5,6 +5,10 @@ use std::rc::Rc;
 
 const MARIO_RECT_WIDTH: usize = 20;
 const MARIO_RECT_HEIGHT: usize = 32;
+const INVADER_ENEMY_RECT_WIDTH: usize = 16;
+const INVADER_ENEMY_RECT_HEIGHT: usize = 16;
+const INVADER_PLAYER_RECT_WIDTH: usize = 22;
+const INVADER_PLAYER_RECT_HEIGHT: usize = 16;
 
 #[allow(dead_code)]
 #[derive(PartialEq, Clone, Debug)]
@@ -351,6 +355,120 @@ impl AnimationSet {
                         sz: Vec2i {
                             x: MARIO_RECT_WIDTH as i32,
                             y: MARIO_RECT_HEIGHT as i32,
+                        },
+                    }],
+                    frame_timings: vec![0],
+                    loops: true,
+                }),
+            );
+        } else if character == Character::SpaceInvader {
+            animations.insert(
+                Action::Die,
+                Rc::new(Animation {
+                    frames: vec![
+                        Rect {
+                            pos: Vec2i { x: 37, y: 32 },
+                            sz: Vec2i {
+                                x: INVADER_PLAYER_RECT_WIDTH as i32,
+                                y: INVADER_PLAYER_RECT_HEIGHT as i32,
+                            },
+                        },
+                        Rect {
+                            pos: Vec2i { x: 37, y: 50 },
+                            sz: Vec2i {
+                                x: INVADER_PLAYER_RECT_WIDTH as i32,
+                                y: INVADER_PLAYER_RECT_HEIGHT as i32,
+                            },
+                        },
+                    ],
+                    frame_timings: vec![0, 10],
+                    loops: true,
+                }),
+            );
+            animations.insert(
+                Action::Glide,
+                Rc::new(Animation {
+                    frames: vec![Rect {
+                        pos: Vec2i { x: 37, y: 16 },
+                        sz: Vec2i {
+                            x: INVADER_PLAYER_RECT_WIDTH as i32,
+                            y: INVADER_PLAYER_RECT_HEIGHT as i32,
+                        },
+                    }],
+                    frame_timings: vec![0],
+                    loops: true,
+                }),
+            );
+        } else if character == Character::SpaceInvaderEnemy1 {
+            animations.insert(
+                Action::Glide,
+                Rc::new(Animation {
+                    frames: vec![
+                        Rect {
+                            pos: Vec2i { x: 0, y: 0 },
+                            sz: Vec2i {
+                                x: INVADER_ENEMY_RECT_WIDTH as i32,
+                                y: INVADER_ENEMY_RECT_HEIGHT as i32,
+                            },
+                        },
+                        Rect {
+                            pos: Vec2i { x: 16, y: 0 },
+                            sz: Vec2i {
+                                x: INVADER_ENEMY_RECT_WIDTH as i32,
+                                y: INVADER_ENEMY_RECT_HEIGHT as i32,
+                            },
+                        },
+                    ],
+                    frame_timings: vec![0, 10],
+                    loops: true,
+                }),
+            );
+            animations.insert(
+                Action::Die,
+                Rc::new(Animation {
+                    frames: vec![Rect {
+                        pos: Vec2i { x: 32, y: 0 },
+                        sz: Vec2i {
+                            x: INVADER_ENEMY_RECT_WIDTH as i32,
+                            y: INVADER_ENEMY_RECT_HEIGHT as i32,
+                        },
+                    }],
+                    frame_timings: vec![0],
+                    loops: true,
+                }),
+            );
+        } else if character == Character::SpaceInvaderEnemy2 {
+            animations.insert(
+                Action::Glide,
+                Rc::new(Animation {
+                    frames: vec![
+                        Rect {
+                            pos: Vec2i { x: 0, y: 16 },
+                            sz: Vec2i {
+                                x: INVADER_ENEMY_RECT_WIDTH as i32,
+                                y: INVADER_ENEMY_RECT_HEIGHT as i32,
+                            },
+                        },
+                        Rect {
+                            pos: Vec2i { x: 16, y: 16 },
+                            sz: Vec2i {
+                                x: INVADER_ENEMY_RECT_WIDTH as i32,
+                                y: INVADER_ENEMY_RECT_HEIGHT as i32,
+                            },
+                        },
+                    ],
+                    frame_timings: vec![0, 10],
+                    loops: true,
+                }),
+            );
+            animations.insert(
+                Action::Die,
+                Rc::new(Animation {
+                    frames: vec![Rect {
+                        pos: Vec2i { x: 32, y: 0 },
+                        sz: Vec2i {
+                            x: INVADER_ENEMY_RECT_WIDTH as i32,
+                            y: INVADER_ENEMY_RECT_HEIGHT as i32,
                         },
                     }],
                     frame_timings: vec![0],
