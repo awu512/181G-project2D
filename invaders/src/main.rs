@@ -17,11 +17,6 @@ const BULLET_VELO: i32 = 1;
 const RED: Color = (181, 49, 32, 255);
 const BLUE: Color = (74, 206, 222, 255);
 
-const TEMP: Rect = Rect {
-    pos: Vec2i { x: 0, y: 0 },
-    sz: Vec2i { x: 16, y: 16 },
-};
-
 const SS_PLAYER: Rect = Rect {
     pos: Vec2i { x: 32, y: 16 },
     sz: Vec2i { x: 32, y: 16 },
@@ -43,6 +38,8 @@ struct State {
 
     blockers: Vec<Blocker>,
     shooting_timeout: u8,
+  
+    game_over: u8
 }
 
 impl State {
@@ -69,7 +66,7 @@ impl State {
 
         for y in 0..2 {
             for x in 0..8 {
-                enemies.push(Enemy::new(x % 2 + y, Vec2i { x, y }));
+                enemies.push(Enemy::new((x+y) % 2, Vec2i{x,y}));
             }
         }
         let mut blockers = vec![];
@@ -91,6 +88,8 @@ impl State {
 
             blockers,
             shooting_timeout: 0,
+
+            game_over: 0
         }
     }
 }
@@ -260,7 +259,7 @@ impl engine::eng::Game for Game {
         state.player_bullets.retain(|b| b.pos.y + b.sz.y > 0);
 
         for bullet in state.player_bullets.iter_mut() {
-            bullet.pos.y -= BULLET_VELO;
+            bullet.pos.y -= 2*BULLET_VELO;
             fb2d.draw_rect(bullet, BLUE);
         }
 
@@ -272,13 +271,8 @@ impl engine::eng::Game for Game {
             fb2d.draw_rect(bullet, RED);
         }
 
-        // COLLISION CHECKS
-        // player_bullet & enemy
-        // player_bullet & blocker
-        // enemy_bullet & player
-        // enemy_bullet & blocker
 
-        // UPDATE EVERYTHING
+        // UPDATE PLAYER
         fb2d.bitblt(
             &assets.spritesheet,
             SS_PLAYER,
@@ -295,12 +289,37 @@ impl engine::eng::Game for Game {
 
         let mut rng = rand::thread_rng();
 
+        let mut enemies_left = false;
         for enemy in state.enemies.iter_mut() {
+
+            if enemy.alive {
+                enemies_left = true;
+            }
+
+            let mut dead_bullets = vec![];
+
+            for (i,player_bullet) in state.player_bullets.iter().enumerate() {
+                if enemy.rect.contains_point(player_bullet.pos) && enemy.alive {
+                    // play death animation
+                    enemy.alive = false;
+                    dead_bullets.push(i);
+                }
+            }
+
+            for i in dead_bullets {
+                state.player_bullets.remove(i);
+            }
+
             enemy.rect.move_by(state.evx, 0);
 
-            if rng.gen_range(0..600) == 0 {
+            if rng.gen_range(0..600) == 0 && enemy.alive {
                 state.enemy_bullets.push(enemy.shoot());
             }
+
+            let temp: Rect = Rect {
+                pos: Vec2i { x: 0, y: 16*enemy.style },
+                sz: Vec2i { x: 16, y: 16 }
+            };
 
             if enemy.alive {
                 let speedup_factor = 7;
@@ -314,9 +333,55 @@ impl engine::eng::Game for Game {
             }
         }
 
+        if !enemies_left {
+            state.game_over = 2;
+            // win sequence
+        }
+
         // UPDATE BLOCKERS
-        for blocker in state.blockers.iter() {
-            fb2d.draw_rect(&blocker.rect, BLUE);
+        for blocker in state.blockers.iter_mut() {
+
+            let mut dead_player_bullets = vec![];
+
+            for (i,player_bullet) in state.player_bullets.iter().enumerate() {
+                if blocker.rect.contains_point(player_bullet.pos) && blocker.alive {
+                    // play death animation
+                    blocker.alive = false;
+                    dead_player_bullets.push(i);
+                }
+            }
+
+            for i in dead_player_bullets {
+                state.player_bullets.remove(i);
+            }
+
+            let mut dead_enemy_bullets = vec![];
+
+            for (i,enemy_bullet) in state.enemy_bullets.iter().enumerate() {
+                if blocker.rect.contains_point(enemy_bullet.pos) && blocker.alive {
+                    // play death animation
+                    blocker.alive = false;
+                    dead_enemy_bullets.push(i);
+                }
+            }
+
+            for i in dead_enemy_bullets {
+                state.enemy_bullets.remove(i);
+            }
+
+            if blocker.alive {
+                fb2d.draw_rect(&blocker.rect, BLUE);
+            }
+        }
+
+        // ENEMY BULLET & PLAYER COLLISION
+        for enemy_bullet in state.enemy_bullets.iter() {
+            if state.player.contains_point(enemy_bullet.pos) {
+                if state.game_over == 0 {
+                    state.game_over = 1;
+                    // loss sequence
+                }
+            }
         }
     }
 }
