@@ -34,6 +34,8 @@ struct State {
     ay: f32,
     ball: Rect,
     ball_shot: bool,
+    bpx: f32,
+    bpy: f32,
     bvx: f32,
     bvy: f32,
     bay: f32,
@@ -180,6 +182,8 @@ impl engine::eng::Game for Game {
             && !state.ball_shot
         {
             state.ball.pos = state.player.pos;
+            state.bpx = state.player.pos.x as f32;
+            state.bpy = state.player.pos.y as f32;
             state.bvx = -6.0 * (state.meter.sz.y as f32 / 64.0);
             state.bvy = -4.0;
             state.metering = false;
@@ -289,21 +293,25 @@ impl engine::eng::Game for Game {
         if state.ball_shot {
             if state.basket.contains_point({
                 Vec2i {
-                    x: state.ball.pos.x + state.ball.sz.x / 2,
-                    y: state.ball.pos.y + state.ball.sz.y / 2,
+                    x: state.bpx as i32 + state.ball.sz.x / 2,
+                    y: state.bpy as i32 + state.ball.sz.y / 2,
                 }
             }) {
                 state.ball_shot = false;
                 state.splash_counter = 30;
             }
 
-            if state.ball.pos.x + state.ball.sz.x > 0
-                && state.ball.pos.y < HEIGHT as i32
+            if (state.bpx + state.bpy) as i32 > 0
+                && (state.bpy as i32) < (HEIGHT as i32)
                 && state.ball_shot
             {
                 state.bvy += state.bay;
 
-                state.ball.move_by(state.bvx as i32, state.bvy as i32);
+                state.bpx += state.bvx;
+                state.bpy += state.bvy;
+
+                state.ball.pos.x = state.bpx as i32;
+                state.ball.pos.y = state.bpy as i32;
 
                 fb2d.draw_ball(&state.ball);
             } else {
@@ -389,6 +397,8 @@ impl State {
             ay: 0.2,
             ball,
             ball_shot: false,
+            bpx: 0.0,
+            bpy: 0.0,
             bvx: 0.0,
             bvy: 0.0,
             bay: 0.2,
