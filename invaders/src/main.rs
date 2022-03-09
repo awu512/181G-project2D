@@ -22,11 +22,22 @@ const SS_PLAYER: Rect = Rect {
     sz: Vec2i { x: 32, y: 16 },
 };
 
+const SS_WIN: Rect = Rect {
+    pos: Vec2i { x: 0, y: 0 },
+    sz: Vec2i { x: 80, y: 16 },
+};
+
+const SS_LOSE: Rect = Rect {
+    pos: Vec2i { x: 0, y: 16 },
+    sz: Vec2i { x: 80, y: 16 },
+};
+
 struct Assets {
     spritesheet: Rc<Image>,
     enemy1_animation_set: AnimationSet,
     enemy2_animation_set: AnimationSet,
     player_animation_set: AnimationSet,
+    winlose_spritesheet: Image
 }
 
 struct State {
@@ -188,11 +199,15 @@ impl engine::eng::Game for Game {
         let spritesheet = Rc::new(Image::from_file(std::path::Path::new(
             "content/spritesheet.png",
         )));
+        let wl_spritesheet = Image::from_file(std::path::Path::new(
+            "content/winlose.png",
+        ));
         let assets = Assets {
             spritesheet,
             enemy1_animation_set: AnimationSet::new(Character::SpaceInvaderEnemy1),
             enemy2_animation_set: AnimationSet::new(Character::SpaceInvaderEnemy2),
             player_animation_set: AnimationSet::new(Character::SpaceInvader),
+            winlose_spritesheet: wl_spritesheet,
         };
         let state = State::new();
         (state, assets)
@@ -244,6 +259,11 @@ impl engine::eng::Game for Game {
     }
 
     fn render(state: &mut State, assets: &mut Assets, fb2d: &mut Image) {
+
+        if state.game_over != 0 {
+            return
+        }
+
         fb2d.clear((0, 0, 0, 255));
 
         // PLAYER MOVEMENT
@@ -329,21 +349,12 @@ impl engine::eng::Game for Game {
 
             enemy.rect.move_by(state.evx, 0);
 
-            if rng.gen_range(0..600) == 0 && enemy.alive {
+            if rng.gen_range(0..400) == 0 && enemy.alive {
                 state.enemy_bullets.push(enemy.shoot());
             }
 
-            let temp: Rect = Rect {
-                pos: Vec2i {
-                    x: 0,
-                    y: 16 * enemy.style,
-                },
-                sz: Vec2i { x: 16, y: 16 },
-            };
-
             if enemy.alive {
                 let speedup_factor = 7;
-                // fb2d.bitblt(&assets.spritesheet, TEMP, enemy.rect.pos, false);
                 fb2d.bitblt(
                     &assets.spritesheet,
                     enemy.sprite.play_animation(&speedup_factor),
@@ -356,9 +367,13 @@ impl engine::eng::Game for Game {
         if !enemies_left {
             if state.game_over == 0 {
                 state.game_over = 2;
-                dbg!("You win!");
+                fb2d.bitblt(
+                    &assets.winlose_spritesheet,
+                    SS_WIN,
+                    Vec2i { x: WIDTH/2 - SS_WIN.sz.x/2, y: HEIGHT/2 - SS_WIN.sz.y/2 },
+                    false
+                );
             }
-            // win sequence
         }
 
         // UPDATE BLOCKERS
@@ -398,7 +413,10 @@ impl engine::eng::Game for Game {
 
         // ENEMY BULLET & PLAYER COLLISION
         for enemy_bullet in state.enemy_bullets.iter() {
-            if state.player_sprite.shape.contains_point(enemy_bullet.pos) {
+            let mut hitbox = state.player_sprite.shape;
+            hitbox.pos.x += 5;
+            hitbox.sz.x = 22;
+            if hitbox.contains_point(enemy_bullet.pos) {
                 if state.game_over == 0 {
                     state.game_over = 1;
                     let speedup_factor = 7;
@@ -411,8 +429,12 @@ impl engine::eng::Game for Game {
                         state.player_sprite.shape.pos,
                         false,
                     );
-                    dbg!("You died!");
-                    // loss sequence
+                    fb2d.bitblt(
+                        &assets.winlose_spritesheet,
+                        SS_LOSE,
+                        Vec2i { x: WIDTH/2 - SS_LOSE.sz.x/2, y: HEIGHT/2 - SS_WIN.sz.y/2 },
+                        false
+                    );
                 }
             }
         }
