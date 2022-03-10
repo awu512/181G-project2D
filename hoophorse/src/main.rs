@@ -558,9 +558,9 @@ impl engine::eng::Game for Game {
         } else {
             state.game_over = true;
             let winner: i32;
-            if state.p1.score > state.p1.score {
+            if state.p1.score > state.p2.score {
                 winner = 1;
-            } else if state.p1.score < state.p1.score {
+            } else if state.p1.score < state.p2.score {
                 winner = 2;
             } else {
                 winner = 0;
