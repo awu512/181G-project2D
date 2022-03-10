@@ -17,6 +17,7 @@ const TILE_SZ: i32 = 16;
 struct Assets {
     spritesheet: Rc<Image>,
     numsheet: Rc<Image>,
+    textsheet: Rc<Image>,
     tilesheet: Rc<Image>,
     tileset: Rc<Tileset>,
     tilemap: Tilemap,
@@ -28,6 +29,7 @@ struct State {
     timer: Rect,
     p1: PlayerState,
     p2: PlayerState,
+    game_over: bool
 }
 
 impl State {
@@ -45,6 +47,7 @@ impl State {
             timer,
             p1,
             p2,
+            game_over: false
         }
     }
 }
@@ -443,6 +446,9 @@ impl engine::eng::Game for Game {
         let numsheet = Rc::new(Image::from_file(std::path::Path::new(
             "content/numsheet.png",
         )));
+        let textsheet = Rc::new(Image::from_file(std::path::Path::new(
+            "content/textsheet.png",
+        ))); 
         let tileset = Rc::new(Tileset::new(
             vec![
                 Tile { solid: true },
@@ -485,6 +491,7 @@ impl engine::eng::Game for Game {
         let assets = Assets {
             spritesheet,
             numsheet,
+            textsheet,
             tilesheet,
             tileset,
             tilemap: map,
@@ -495,6 +502,10 @@ impl engine::eng::Game for Game {
     }
 
     fn update(state: &mut State, _assets: &mut Assets, now_keys: &[bool], prev_keys: &[bool]) {
+        if state.game_over {
+            return
+        }
+        
         use winit::event::VirtualKeyCode;
 
         let p1_now_keys = vec![
@@ -530,6 +541,10 @@ impl engine::eng::Game for Game {
     }
 
     fn render(state: &mut State, assets: &mut Assets, fb2d: &mut Image) {
+        if state.game_over {
+            return
+        }
+        
         assets.tilemap.draw(fb2d);
         render_player(&mut state.p1, assets, fb2d);
         render_player(&mut state.p2, assets, fb2d);
@@ -540,6 +555,23 @@ impl engine::eng::Game for Game {
             state.timer.sz.x = tw + (tw % 2);
             state.timer.pos.x = (WIDTH as i32)/2 - state.timer.sz.x/2;
             fb2d.draw_rect(&state.timer, (255,255,255,255));
+        } else {
+            state.game_over = true;
+            let winner: i32;
+            if state.p1.score > state.p1.score {
+                winner = 1;
+            } else if state.p1.score < state.p1.score {
+                winner = 2;
+            } else {
+                winner = 0;
+            }
+
+            fb2d.bitblt(
+                &assets.textsheet, 
+                Rect { pos: Vec2i { x: 0, y: winner*16 }, sz: Vec2i { x: 160, y: 16 } }, 
+                Vec2i { x: 80, y: 152 }, 
+                false
+            )
         }
     }
 }
