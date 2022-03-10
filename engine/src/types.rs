@@ -104,7 +104,7 @@ impl Image {
         }
     }
 
-    pub fn draw_ball(&mut self, rect: &Rect) {
+    pub fn draw_ball(&mut self, rect: &Rect, (r,g,_b,_a): Color) {
         let ball = vec![
             0, 0, 1, 1, 1, 1, 0, 0,
             0, 1, 1, 1, 1, 1, 1, 0,
@@ -122,7 +122,7 @@ impl Image {
                 if (y*self.sz.x + x) < self.sz.x * self.sz.y 
                     && x >= 0 
                     && ball[coli] > 0 {
-                        let col: Color = (255*ball[coli],159*ball[coli],0,255);
+                        let col: Color = (r*ball[coli],g*ball[coli],0,255);
                         self.buffer[(y*self.sz.x + x) as usize..((y*self.sz.x + x) as usize) + 1]
                             .fill(col);
                 }
