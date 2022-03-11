@@ -37,7 +37,7 @@ struct Assets {
     enemy1_animation_set: AnimationSet,
     enemy2_animation_set: AnimationSet,
     player_animation_set: AnimationSet,
-    winlose_spritesheet: Image
+    winlose_spritesheet: Image,
 }
 
 struct State {
@@ -199,9 +199,7 @@ impl engine::eng::Game for Game {
         let spritesheet = Rc::new(Image::from_file(std::path::Path::new(
             "content/spritesheet.png",
         )));
-        let wl_spritesheet = Image::from_file(std::path::Path::new(
-            "content/winlose.png",
-        ));
+        let wl_spritesheet = Image::from_file(std::path::Path::new("content/winlose.png"));
         let assets = Assets {
             spritesheet,
             enemy1_animation_set: AnimationSet::new(Character::SpaceInvaderEnemy1),
@@ -259,9 +257,8 @@ impl engine::eng::Game for Game {
     }
 
     fn render(state: &mut State, assets: &mut Assets, fb2d: &mut Image) {
-
         if state.game_over != 0 {
-            return
+            return;
         }
 
         fb2d.clear((0, 0, 0, 255));
@@ -370,8 +367,11 @@ impl engine::eng::Game for Game {
                 fb2d.bitblt(
                     &assets.winlose_spritesheet,
                     SS_WIN,
-                    Vec2i { x: WIDTH/2 - SS_WIN.sz.x/2, y: HEIGHT/2 - SS_WIN.sz.y/2 },
-                    false
+                    Vec2i {
+                        x: WIDTH / 2 - SS_WIN.sz.x / 2,
+                        y: HEIGHT / 2 - SS_WIN.sz.y / 2,
+                    },
+                    false,
                 );
             }
         }
@@ -432,8 +432,11 @@ impl engine::eng::Game for Game {
                     fb2d.bitblt(
                         &assets.winlose_spritesheet,
                         SS_LOSE,
-                        Vec2i { x: WIDTH/2 - SS_LOSE.sz.x/2, y: HEIGHT/2 - SS_WIN.sz.y/2 },
-                        false
+                        Vec2i {
+                            x: WIDTH / 2 - SS_LOSE.sz.x / 2,
+                            y: HEIGHT / 2 - SS_WIN.sz.y / 2,
+                        },
+                        false,
                     );
                 }
             }

@@ -29,14 +29,14 @@ struct State {
     timer: Rect,
     p1: PlayerState,
     p2: PlayerState,
-    game_over: bool
+    game_over: bool,
 }
 
 impl State {
     pub fn new() -> Self {
         let timer = Rect {
             pos: Vec2i { x: 80, y: 4 },
-            sz: Vec2i { x: 160, y: 8 }
+            sz: Vec2i { x: 160, y: 8 },
         };
 
         let p1 = PlayerState::new(Character::Mario);
@@ -47,7 +47,7 @@ impl State {
             timer,
             p1,
             p2,
-            game_over: false
+            game_over: false,
         }
     }
 }
@@ -77,7 +77,7 @@ struct PlayerState {
     shot_loc: i32,
     made_shots: Vec<i32>,
     splash_counter: u8,
-    color: Color
+    color: Color,
 }
 
 impl PlayerState {
@@ -126,9 +126,9 @@ impl PlayerState {
 
         let color: Color;
         if character == Character::Mario {
-            color = (255,0,0,255);
+            color = (255, 0, 0, 255);
         } else {
-            color = (0,255,0,255);
+            color = (0, 255, 0, 255);
         }
 
         Self {
@@ -156,7 +156,7 @@ impl PlayerState {
             shot_loc: 0,
             made_shots: vec![],
             splash_counter: 0,
-            color
+            color,
         }
     }
 }
@@ -169,11 +169,7 @@ fn main() {
 
 // [Up, Left, Right, Down]
 fn update_player(state: &mut PlayerState, now_keys: &[bool], prev_keys: &[bool]) {
-
-    if now_keys[0]
-        && !prev_keys[0]
-        && !state.jumping
-    {
+    if now_keys[0] && !prev_keys[0] && !state.jumping {
         state.vy = -5.0;
         state.jumping = true;
         // Only update the animation if it was previously something else.
@@ -231,10 +227,7 @@ fn update_player(state: &mut PlayerState, now_keys: &[bool], prev_keys: &[bool])
         }
     }
 
-    if !now_keys[3]
-        && prev_keys[3]
-        && !state.ball_shot
-    {
+    if !now_keys[3] && prev_keys[3] && !state.ball_shot {
         state.ball.pos = state.player.pos;
         state.bpx = state.player.pos.x as f32;
         state.bpy = state.player.pos.y as f32;
@@ -412,24 +405,48 @@ fn render_player(state: &mut PlayerState, assets: &mut Assets, fb2d: &mut Image)
     let score100 = state.score / 100;
 
     fb2d.bitblt(
-        &assets.numsheet, 
-        Rect { pos: Vec2i { x: score1*16, y: row }, sz: Vec2i { x: 16, y: 16 }}, 
-        Vec2i { x: offset + 32, y: 0 }, 
-        false
+        &assets.numsheet,
+        Rect {
+            pos: Vec2i {
+                x: score1 * 16,
+                y: row,
+            },
+            sz: Vec2i { x: 16, y: 16 },
+        },
+        Vec2i {
+            x: offset + 32,
+            y: 0,
+        },
+        false,
     );
 
     fb2d.bitblt(
-        &assets.numsheet, 
-        Rect { pos: Vec2i { x: score10*16, y: row }, sz: Vec2i { x: 16, y: 16 }}, 
-        Vec2i { x: offset + 16, y: 0 }, 
-        false
+        &assets.numsheet,
+        Rect {
+            pos: Vec2i {
+                x: score10 * 16,
+                y: row,
+            },
+            sz: Vec2i { x: 16, y: 16 },
+        },
+        Vec2i {
+            x: offset + 16,
+            y: 0,
+        },
+        false,
     );
 
     fb2d.bitblt(
-        &assets.numsheet, 
-        Rect { pos: Vec2i { x: score100*16, y: row }, sz: Vec2i { x: 16, y: 16 }}, 
-        Vec2i { x: offset, y: 0 }, 
-        false
+        &assets.numsheet,
+        Rect {
+            pos: Vec2i {
+                x: score100 * 16,
+                y: row,
+            },
+            sz: Vec2i { x: 16, y: 16 },
+        },
+        Vec2i { x: offset, y: 0 },
+        false,
     );
 }
 
@@ -448,7 +465,7 @@ impl engine::eng::Game for Game {
         )));
         let textsheet = Rc::new(Image::from_file(std::path::Path::new(
             "content/textsheet.png",
-        ))); 
+        )));
         let tileset = Rc::new(Tileset::new(
             vec![
                 Tile { solid: true },
@@ -503,9 +520,8 @@ impl engine::eng::Game for Game {
 
     fn update(state: &mut State, _assets: &mut Assets, now_keys: &[bool], prev_keys: &[bool]) {
         if state.game_over {
-            return
+            return;
         }
-        
         use winit::event::VirtualKeyCode;
 
         let p1_now_keys = vec![
@@ -542,9 +558,8 @@ impl engine::eng::Game for Game {
 
     fn render(state: &mut State, assets: &mut Assets, fb2d: &mut Image) {
         if state.game_over {
-            return
+            return;
         }
-        
         assets.tilemap.draw(fb2d);
         render_player(&mut state.p1, assets, fb2d);
         render_player(&mut state.p2, assets, fb2d);
@@ -553,8 +568,8 @@ impl engine::eng::Game for Game {
             state.time -= 1;
             let tw = (160.0 * (state.time as f32 / 3600.0)) as i32;
             state.timer.sz.x = tw + (tw % 2);
-            state.timer.pos.x = (WIDTH as i32)/2 - state.timer.sz.x/2;
-            fb2d.draw_rect(&state.timer, (255,255,255,255));
+            state.timer.pos.x = (WIDTH as i32) / 2 - state.timer.sz.x / 2;
+            fb2d.draw_rect(&state.timer, (255, 255, 255, 255));
         } else {
             state.game_over = true;
             let winner: i32;
@@ -567,10 +582,16 @@ impl engine::eng::Game for Game {
             }
 
             fb2d.bitblt(
-                &assets.textsheet, 
-                Rect { pos: Vec2i { x: 0, y: winner*16 }, sz: Vec2i { x: 160, y: 16 } }, 
-                Vec2i { x: 80, y: 152 }, 
-                false
+                &assets.textsheet,
+                Rect {
+                    pos: Vec2i {
+                        x: 0,
+                        y: winner * 16,
+                    },
+                    sz: Vec2i { x: 160, y: 16 },
+                },
+                Vec2i { x: 80, y: 152 },
+                false,
             )
         }
     }
